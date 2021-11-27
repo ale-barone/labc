@@ -1,5 +1,5 @@
 import numpy as np 
-from abc import ABC, abstractclassmethod, abstractmethod
+from abc import ABC, abstractmethod
 
 class Istats(ABC):
     """Base class for managing statistics."""
@@ -9,7 +9,7 @@ class Istats(ABC):
         """It generates resampled bins from raw data."""
 
     @abstractmethod
-    def err_fun(self, array_bins_in):
+    def errFun(self, array_bins_in):
         """It computes the error from resampled bins."""
 
     @abstractmethod
@@ -35,23 +35,23 @@ class statsBase(Istats):
     def generate_bins(self, array_raw_in):
         pass
 
-    def err_fun(self, array_bins_in):
+    def errFun(self, array_mean_in, array_bins_in):
         # error 
-        array_in_mean = np.mean(array_bins_in, 0)
-        diff = array_bins_in - array_in_mean
+        diff = array_bins_in - array_mean_in
         diff2 = diff**2
-        err2 = self.prefactor * np.mean(diff2,0)
+        err2 = self.prefactor * np.mean(diff2, 0)
         err = np.sqrt(err2)
         return err
 
     def generate_stats(self, array_raw_in):
         mean = np.mean(array_raw_in, 0)
         bins = self.generate_bins(mean)
-        err = self.err_fun(mean, bins)  
+        err = self.errFun(mean, bins)  
         return mean, err, bins
 
+    @staticmethod
     def cov2(data_x_in, data_y_in, *, num_bins=None, rangefit=None, thin=1):
-        """Compute the covariance of two data_stats objects."""
+        """Compute the covariance of two dataStats objects."""
         
         T = data_x_in.T()
         num_bins = data_x_in.num_bins() if num_bins is None else num_bins
@@ -77,7 +77,7 @@ class statsBase(Istats):
         Cov = (num_bins-1) * np.mean(Cov, 0)
         return Cov
 
-    def cov(data_x_in, *, num_bins=None, rangefit=None, thin=1):
+    def cov(self, data_x_in, *, num_bins=None, rangefit=None, thin=1):
         return self.cov2(data_x_in, data_x_in, num_bins=None, rangefit=None, thin=1)
 
     def cov_blocks(self, data_array_in, num_bins=None, rangefit=None, thin=1):
@@ -99,5 +99,5 @@ class statsBase(Istats):
 
     def corr(self, *arrays_in):
         """General correlation matrix possibly for different input arrays."""
-        pass
+        return NotImplementedError
 

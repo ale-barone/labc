@@ -26,7 +26,8 @@ def get_paths(h5file):
     out = np.append(groups, datasets)
     return out
 
-
+# TODO: the following are probably more general functions.. I may consider defining then generally and specialize them
+# for every file format
 
 class NonStatsIDFileError(Exception):
     """Custom error to avoid overriding external files."""
@@ -34,8 +35,6 @@ class NonStatsIDFileError(Exception):
     def __init__(self, file, message):
         self.file = file
         super().__init__(message)
-
-
 
 
 def get_statsID(h5file):

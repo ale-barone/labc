@@ -1,6 +1,7 @@
 import numpy as np
 from .HDF5.HDF5Reader import HDF5Reader
 from .HDF5.HDF5Writer import HDF5Writer
+from .HDF5.HDF5Formatter import HDF5Formatter
 from .HDF5.HDF5Utilities import assign_statsID
 from .objectFactory import objectFactory
 
@@ -20,7 +21,7 @@ reader_factory.add_obj('.h5', HDF5Reader)
 # final object to be called: it deals with files, whereas readerFactory deals directly only with readers (doesn't really know anything about files)
 class reader:
     """
-    Class which take as input the file and its 'ID' (typically 'generic', 'gauge' or 'stats') and calls the appropriate
+    Class which take as input the file, read its 'statsID' ('gauge' or 'stats', 'generic' if None) and calls the appropriate
     reader with the help of a reader factory.
     """
 
@@ -50,6 +51,24 @@ class writer:
         writer = writer_factory.get_obj(file, statsID)
         cls.writer = writer
         return writer(file, statsID)
+
+formatter_factory = objectFactory()
+formatter_factory.add_obj('h5', HDF5Formatter)
+
+class formatter:
+    """
+    Class which take an input file with 'statsID'={'gauge', 'stats'}
+    and format the data in a numpy array 'data' such that
+    data[0]: mean
+    data[1]: err
+    data[2:]: bins
+    """
+
+    def __new__(cls, file):
+        statsID = assign_statsID(file)
+        formatter = formatter_factory.get_obj(file, statsID)
+        cls.reader = formatter
+        return formatter(file)
 
 
 

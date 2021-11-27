@@ -1,12 +1,13 @@
 import numpy as np
-from .statsBase import statsBase
+from statsBase import statsBase
 
-class statsJack(statsBase):
+class statsBoot(statsBase):
 
     def __init__(self, *, num_config, num_bins, seed):
         super().__init__(self, num_config, num_bins)
         self.prefactor = 1
         self.seed = seed
+        self.statsType = 'boot'
 
     def generate_bins(self, array_raw_in):
         """It generates resampled bins from raw data using jackknife."""
