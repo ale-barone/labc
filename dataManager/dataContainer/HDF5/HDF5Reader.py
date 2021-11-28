@@ -15,10 +15,10 @@ class _HDF5ReaderBase(IReader):
         self.datasets = get_datasets(file)   
         self.statsID = get_statsID(file)
     
-    def read(self, dset, re=None):
+    def read(self, dset):
         assert(dset in self.datasets), f"dataset '{dset}' must be in datasets list (check 'datasets' attribute)"
         with h5py.File(self.file, 'r') as hf:
-            out = np.asarray(hf[dset])[re]
+            out = np.asarray(hf[dset])
         return out
 
     def dump(self, re=None):

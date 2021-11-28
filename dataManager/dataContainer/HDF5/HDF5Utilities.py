@@ -37,32 +37,33 @@ class NonStatsIDFileError(Exception):
         super().__init__(message)
 
 
-def get_statsID(h5file):
-    with h5py.File(h5file, 'r') as hf:
-        try:
-            statsID = hf.attrs['statsID']
-            return statsID
-        except:
-            raise NonStatsIDFileError(
-                file=h5file,
-                message=f"File '{h5file}' has no attribute 'statsID'."
-            )
+# def get_statsID(h5file):
+#     with h5py.File(h5file, 'r') as hf:
+#         try:
+#             statsID = hf.attrs['statsID']
+#             return statsID
+#         except:
+#             raise NonStatsIDFileError(
+#                 file=h5file,
+#                 message=f"File '{h5file}' has no attribute 'statsID'."
+#             )
 
-def assert_statsID(h5file):
+def has_statsID(h5file):
     with h5py.File(h5file, 'r') as hf:
         statsID_bool = 'statsID' in hf.attrs
         return statsID_bool
 
-def assign_statsID(h5file):
-    if assert_statsID(h5file):
-        statsID = get_statsID(h5file)
+def get_statsID(h5file):
+    if has_statsID(h5file):
+        with h5py.File(h5file, 'r') as hf:
+            statsID = hf.attrs['statsID']            
     else:
         statsID = 'generic'
     return statsID
 
 def check_statsID(h5file):
     if os.path.isfile(h5file):
-        if not assert_statsID(h5file):
+        if not has_statsID(h5file):
             raise NonStatsIDFileError(
                 file=h5file,
                 message=f"File '{h5file}' has no attribute 'statsID'."

@@ -2,8 +2,10 @@ import numpy as np
 from .HDF5.HDF5Reader import HDF5Reader
 from .HDF5.HDF5Writer import HDF5Writer
 from .HDF5.HDF5Formatter import HDF5Formatter
-from .HDF5.HDF5Utilities import assign_statsID
+from .HDF5.HDF5Utilities import check_statsID, get_statsID
 from .objectFactory import objectFactory
+
+# I THINK IT WOULD MAKE MORE SENSE TO HAVE THIS ALL FILE INTO THE __init__.py of 'dataManager'
 
 # I may have to build a fileStatsID method which takes its own reader/writer
 
@@ -26,7 +28,7 @@ class reader:
     """
 
     def __new__(cls,  file): # TODO: in principle I should get the file ID from the attribute! (if there is no attribute then I go with 'generic')
-        statsID = assign_statsID(file)
+        statsID = get_statsID(file)
         reader = reader_factory.get_obj(file, statsID)
         cls.reader = reader
         return reader(file)
@@ -53,7 +55,7 @@ class writer:
         return writer(file, statsID)
 
 formatter_factory = objectFactory()
-formatter_factory.add_obj('h5', HDF5Formatter)
+formatter_factory.add_obj('.h5', HDF5Formatter)
 
 class formatter:
     """
@@ -64,11 +66,12 @@ class formatter:
     data[2:]: bins
     """
 
-    def __new__(cls, file):
-        statsID = assign_statsID(file)
+    def __new__(cls, file, statsType):
+        check_statsID(file)
+        statsID = get_statsID(file)
         formatter = formatter_factory.get_obj(file, statsID)
         cls.reader = formatter
-        return formatter(file)
+        return formatter(file, statsType)
 
 
 

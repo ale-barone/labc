@@ -20,7 +20,7 @@ class objectFactory:
     
     def add_obj(self, extension, obj):
         if extension in self._extensions:
-            raise KeyError(f"Extension {extension} already defined.")
+            raise KeyError(f'Extension {extension} already defined.')
         else:
             self._creators[extension] = obj
             self._extensions.add(extension)

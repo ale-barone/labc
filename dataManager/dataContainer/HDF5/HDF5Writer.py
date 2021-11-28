@@ -13,7 +13,7 @@ class _HDF5WriterBase(IWriter):
         super().__init__(file, statsID)  
     
     def _create_file(self):
-        check_statsID(self.file)
+        check_statsID(self.file) # to avoid writing file I did not create myself
         with h5py.File(self.file, 'w') as hf:
             hf.attrs['statsID'] = self.statsID
         self.groupStructure = False

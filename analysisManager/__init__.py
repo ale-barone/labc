@@ -9,37 +9,21 @@
 
 from LatticeABC import statsManager as sM
 from LatticeABC import dataManager as dM
-
-def _formatter(file):
-    """Format data from into numpy array data such that
-    data[0]: mean
-    data[1]: err
-    data[2:]: bins"""
-    ext = get_extension(file)
-    statsID = get_statsID(file)
-    
+from LatticeABC.dataManager import dataContainer as dC
 
 
 class analysis:
     """Initializer for the analysis."""
 
-    def __init__(self, *, stats_type, tsrc_list, config_list): # I need also config list in principle
+    def __init__(self, statsType, tsrc_list, config_list): # I need also config list in principle
         self.tsrc_list = tsrc_list
         self.config_list = config_list
-        self.stats_type = stats_type
+        self.statsType = statsType
     
-    def dataStats(self, file):
-        statsID = get_statsID(file)
-        if statsID=='gauge':
-            data = quick_gauge_h5reader(file, self.stats_type, self.stats_par, self.tsrc_list)
-        elif statsID=='stats':
-            data = quick_stats_h5reader(file, self.stats_type, self.stats_par)
-        return data_stats(data, self.stats_type, self.stats_par)
+    def dataStats(self, file, tsrc_list=None):
+        tsrc_list = self.tsrc_list if tsrc_list is None else tsrc_list
+        formatter = dC.formatter(file, self.statsType)
+        data = formatter.format(self.tsrc_list)
+        return dM.dataStats(data, self.statsType)
 
-    def corrStats(self, file):
-        statsID = get_statsID(file)
-        if statsID=='gauge':
-            data = quick_gauge_h5reader(file, self.stats_type, self.stats_par, self.tsrc_list)
-        elif statsID=='stats':
-            data = quick_stats_h5reader(file, self.stats_type, self.stats_par)
-        return corr(data, self.stats_type, self.stats_par)
+

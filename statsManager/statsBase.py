@@ -27,7 +27,7 @@ class Istats(ABC):
 
 class statsBase(Istats):
     
-    def __init__(self, *, num_config, num_bins):
+    def __init__(self, num_config, num_bins):
         self.num_config = num_config
         self.num_bins = num_bins
         self.prefactor = None
@@ -45,7 +45,7 @@ class statsBase(Istats):
 
     def generate_stats(self, array_raw_in):
         mean = np.mean(array_raw_in, 0)
-        bins = self.generate_bins(mean)
+        bins = self.generate_bins(array_raw_in)
         err = self.errFun(mean, bins)  
         return mean, err, bins
 

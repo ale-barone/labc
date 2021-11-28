@@ -1,10 +1,10 @@
 import numpy as np
-from statsBase import statsBase
+from .statsBase import statsBase
 
 class statsJack(statsBase):
 
-    def __init__(self, *, num_config):
-        super().__init__(self, num_config, num_config)
+    def __init__(self, num_config):
+        super().__init__(num_config, num_config)
         self.prefactor = num_config -1
         self.statsType = 'jack'
 
