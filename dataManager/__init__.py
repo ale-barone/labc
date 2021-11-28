@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 # READER WITH STATS CONNOTATION
 class dataStats:    
     """Basic class for data manipulation."""
-    
+
     def __init__(self, data, statsType):
         self.data = data
         self.mean = np.asarray(data[0])
@@ -154,3 +154,29 @@ class dataStats:
         out = np.array([out_mean, out_err])
         out = dataStats(np.concatenate([out, out_bins], axis=0), self.statsType)
         return out 
+
+
+# class corr(dataStats):
+
+#     def meff(self):
+#         meff_mean = np.log( self.mean[:-1]/ self.mean[1:] )
+#         meff_bins = np.log( np.apply_along_axis(lambda x : x[:-1], 1, self.bins ) / np.apply_along_axis(lambda x : x[1:], 1, self.bins ))
+#         meff_err = self.err_fun(meff_mean, meff_bins)
+        
+#         meff_stats = self.data_stats_concatenate(meff_mean, meff_err, meff_bins)
+#         return meff_stats
+        
+    
+#     def plot_meff(self, xmin, xmax, shift=0, err=True, *args, **kwargs):
+#         x = np.arange(xmin, xmax)
+#         y = self.meff().mean[xmin:xmax]
+        
+#         if err == False:
+#             y_err = None
+#         elif err == True:
+#             y_err = self.meff().err[xmin:xmax]
+            
+#         plt.errorbar(x + shift, y, yerr = y_err, *args, **kwargs)
+#         plt.xlabel(r'$t$', fontsize = 14)
+#         plt.ylabel(r'$m_{eff}$', fontsize=14)
+#         plt.title(r'$\log ( \, C(t) \, / \, C(t+1) \, )$', fontsize = 14)
