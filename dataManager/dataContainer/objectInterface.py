@@ -1,5 +1,7 @@
 from abc import ABC, abstractmethod
 
+# I may want to inlude here a shared structure for the different formats
+
 class IReader(ABC):
     """Common interface for a reader. It defines the property/methods that every reader must have by definition."""
     

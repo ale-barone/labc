@@ -7,9 +7,23 @@
 # - choosing which statistics to use, either 'jack' or 'boot' and set their paramters, if any
 # - (choosing the file format we are going to work with? )
 
-from LatticeABC import statsManager as sM
-from LatticeABC import dataManager as dM
-from LatticeABC.dataManager import dataContainer as dC
+from LatticeABC import dataManager as _dM
+from LatticeABC.dataManager import dataContainer as _dC
+
+
+class _AlreadyDefined(Exception):
+    """Custom error to avoid overriding global variables."""
+    def __init__(self, message):
+        super().__init__(message)
+
+def _print_bar() -> None:
+    print("==========================================================")
+
+def _print_title(title: str) -> None:
+    _print_bar()
+    print(f"# {title}")
+    _print_bar()
+
 
 
 class analysis:
@@ -19,11 +33,43 @@ class analysis:
         self.tsrc_list = tsrc_list
         self.config_list = config_list
         self.statsType = statsType
+        self.globals = {}
+        self.files = [] # I don't like this solution
+
+    def print_setup(self):
+        _print_title("ANALYSIS SETUP")
+        print("# num_config  = ", len(self.config_list))
+        print("# num_sources = ", len(self.tsrc_list))
+        print("# statsType   = ", 'to be implemented')
+        _print_bar()
     
-    def dataStats(self, file, tsrc_list=None):
-        tsrc_list = self.tsrc_list if tsrc_list is None else tsrc_list
-        formatter = dC.formatter(file, self.statsType)
+    def dataStats(self, file: str, tsrc_list: list=None) -> _dM.dataStats:
+        tsrc_list = self.tsrc_list if tsrc_list is None else tuple(tsrc_list)
+        formatter = _dC.formatter(file, self.statsType)
         data = formatter.format(self.tsrc_list)
-        return dM.dataStats(data, self.statsType)
+        return _dM.dataStats(data, self.statsType)
+    
+    def add_global(self, name: str, value) -> None:
+        """Add global variables to the analysis."""
+        if not name in self.globals:
+            self.globals[name] = value
+        else:
+            raise _AlreadyDefined(
+                message = f"Global variable '{name}' already defined with value: {value}"
+            )
+    
+    def print_globals(self):
+        _print_title("GLOBAL VARIABLES")
+        for key, value in self.globals.items():
+            print(f"# {key} =", value)
+        _print_bar()
+
+    # TODO: I don't like this, needs change
+    def add_file(self, file_fun):
+        self.files.append(file_fun)
+
+
+
+
 
 

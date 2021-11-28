@@ -1,14 +1,11 @@
 import pathlib
 import inspect
+from ..Utilities import _get_extension
 
 def _get_inner_classes(cls):
     return [inner for inner in dir(cls) 
             if inspect.isclass(getattr(cls, inner))
             and not inner == '__class__']
-
-def _get_extension(file):
-    path = pathlib.Path(file)
-    return path.suffix
 
 class objectFactory:
 

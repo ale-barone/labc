@@ -3,6 +3,7 @@ import numpy as np
 
 import pathlib
 from LatticeAB.data import dataContainer as dC
+from .Utilities import _get_extension
 from LatticeAB.data.dataContainer.HDF5.HDF5Utilities import get_statsID
 import matplotlib.pyplot as plt
 
@@ -27,24 +28,21 @@ class dataStats:
     def num_bins(self):
         return len(self.bins)
 
-    # # TODO: change this into a more efficient factory
-    # def save(self, file_out):
-    #     ext = get_extension(file_out)
-    #     if ext=='.h5':
-    #         writer = dC.writer(file_out, 'stats')
-    #         writer.init_groupStructure(self.statsType, self.stats_par)
-    #         writer.add_mean(self.mean)
-    #         writer.add_err(self.err)
-    #         writer.add_bins(self.bins)
-    #     else:
-    #         raise NotImplementedError(f"File extension '{ext}' not implemented!")
-
-    # I need a method to pass statsType in a nice way...or I need to avoid giving a defaul statsType='jack'
-    # or I can wrap everything/ initialize something globally somewhere (see maybe Ryan, he probably did something of this kind)
-    # I need to make sure that a function of dataStats object copies the correct info 
+    # TODO: change this into a more efficient factory
+    def save(self, file_out):
+        ext = _get_extension(file_out)
+        if ext=='.h5':
+            writer = dC.writer(file_out, 'stats')
+            writer.init_groupStructure(self.statsType, self.stats_par)
+            writer.add_mean(self.mean)
+            writer.add_err(self.err)
+            writer.add_bins(self.bins)
+        else:
+            raise NotImplementedError(f"File extension '{ext}' not implemented!")
 
 
-    # need method to print information nicely
+
+    # TODO: need method to print information nicely
     
     def concatenate_dataStats(self, mean, err, bins):
         out = np.array([mean, err])
