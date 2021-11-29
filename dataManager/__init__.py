@@ -2,9 +2,9 @@ import h5py
 import numpy as np
 
 import pathlib
-from LatticeAB.data import dataContainer as dC
+from LatticeABC.dataManager import dataContainer as dC
 from .Utilities import _get_extension
-from LatticeAB.data.dataContainer.HDF5.HDF5Utilities import get_statsID
+from LatticeABC.dataManager.dataContainer.HDF5.HDF5Utilities import get_statsID
 import matplotlib.pyplot as plt
 
 
@@ -33,7 +33,7 @@ class dataStats:
         ext = _get_extension(file_out)
         if ext=='.h5':
             writer = dC.writer(file_out, 'stats')
-            writer.init_groupStructure(self.statsType, self.stats_par)
+            writer.init_groupStructure(self.statsType)
             writer.add_mean(self.mean)
             writer.add_err(self.err)
             writer.add_bins(self.bins)
@@ -153,28 +153,28 @@ class dataStats:
         out = dataStats(np.concatenate([out, out_bins], axis=0), self.statsType)
         return out 
 
+# need to move this from here!
+class corrStats(dataStats):
 
-# class corr(dataStats):
-
-#     def meff(self):
-#         meff_mean = np.log( self.mean[:-1]/ self.mean[1:] )
-#         meff_bins = np.log( np.apply_along_axis(lambda x : x[:-1], 1, self.bins ) / np.apply_along_axis(lambda x : x[1:], 1, self.bins ))
-#         meff_err = self.err_fun(meff_mean, meff_bins)
+    def meff(self):
+        meff_mean = np.log( self.mean[:-1]/ self.mean[1:] )
+        meff_bins = np.log( np.apply_along_axis(lambda x : x[:-1], 1, self.bins ) / np.apply_along_axis(lambda x : x[1:], 1, self.bins ))
+        meff_err = self.errFun(meff_mean, meff_bins)
         
-#         meff_stats = self.data_stats_concatenate(meff_mean, meff_err, meff_bins)
-#         return meff_stats
+        meff_stats = self.concatenate_dataStats(meff_mean, meff_err, meff_bins)
+        return meff_stats
         
     
-#     def plot_meff(self, xmin, xmax, shift=0, err=True, *args, **kwargs):
-#         x = np.arange(xmin, xmax)
-#         y = self.meff().mean[xmin:xmax]
+    def plot_meff(self, xmin, xmax, shift=0, err=True, *args, **kwargs):
+        x = np.arange(xmin, xmax)
+        y = self.meff().mean[xmin:xmax]
         
-#         if err == False:
-#             y_err = None
-#         elif err == True:
-#             y_err = self.meff().err[xmin:xmax]
+        if err == False:
+            y_err = None
+        elif err == True:
+            y_err = self.meff().err[xmin:xmax]
             
-#         plt.errorbar(x + shift, y, yerr = y_err, *args, **kwargs)
-#         plt.xlabel(r'$t$', fontsize = 14)
-#         plt.ylabel(r'$m_{eff}$', fontsize=14)
-#         plt.title(r'$\log ( \, C(t) \, / \, C(t+1) \, )$', fontsize = 14)
+        plt.errorbar(x + shift, y, yerr = y_err, *args, **kwargs)
+        plt.xlabel(r'$t$', fontsize = 14)
+        plt.ylabel(r'$m_{eff}$', fontsize=14)
+        plt.title(r'$\log ( \, C(t) \, / \, C(t+1) \, )$', fontsize = 14)

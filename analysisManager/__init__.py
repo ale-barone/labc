@@ -46,8 +46,15 @@ class analysis:
     def dataStats(self, file: str, tsrc_list: list=None) -> _dM.dataStats:
         tsrc_list = self.tsrc_list if tsrc_list is None else tuple(tsrc_list)
         formatter = _dC.formatter(file, self.statsType)
-        data = formatter.format(self.tsrc_list)
+        data = formatter.format(tsrc_list)
         return _dM.dataStats(data, self.statsType)
+
+    # TODO at the moment it's the same as dataStats
+    def corrStats(self, file: str, tsrc_list: list=None) -> _dM.dataStats:
+        tsrc_list = self.tsrc_list if tsrc_list is None else tuple(tsrc_list)
+        formatter = _dC.formatter(file, self.statsType)
+        data = formatter.format(self.tsrc_list)
+        return _dM.corrStats(data, self.statsType)
     
     def add_global(self, name: str, value) -> None:
         """Add global variables to the analysis."""

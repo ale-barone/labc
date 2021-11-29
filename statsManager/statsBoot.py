@@ -7,7 +7,7 @@ class statsBoot(statsBase):
         super().__init__(num_config, num_bins)
         self.prefactor = 1
         self.seed = seed
-        self.statsType = 'boot'
+        self.ID = 'boot'
 
     def generate_bins(self, array_raw_in):
         """It generates resampled bins from raw data using jackknife."""

@@ -6,7 +6,7 @@ class statsJack(statsBase):
     def __init__(self, num_config):
         super().__init__(num_config, num_config)
         self.prefactor = num_config -1
-        self.statsType = 'jack'
+        self.ID = 'jack'
 
     def generate_bins(self, array_raw_in):
         """It generates resampled bins from raw data using jackknife."""

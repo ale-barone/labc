@@ -1,12 +1,6 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-"""
-Created on Wed May  5 16:03:53 2021
-
-@author: abarone
-"""
 
 import numpy as np
+import matplotlib
 import matplotlib.pyplot as plt
 
 import scipy as sci
@@ -16,34 +10,35 @@ from scipy.optimize import least_squares
 from scipy.optimize import minimize
 from scipy.linalg import cholesky
 
-import gvar as gv
-import lsqfit
-
-from LatticeAB import stats
-from LatticeAB.data import dataHandling as dt
+import LatticeABC.dataManager as dM
 
 # =============================================================================
 # BASIC PLOT
 # =============================================================================
 
-FONTSIZE = {'S' : 14, 'M': 14, 'B': 16, 'BB': 20}
+FONTSIZE = {'S' : 16, 'M': 18, 'B': 20, 'BB': 22}
 FIGSIZE  = (10,7)
 LABELS   = {'x' : 't', 'y' : 'y', 'title' : 'Title'}
 
 # INITIALIZATION FOR PLOT 
 def plot_init(*args, **kwargs):
     # see https://matplotlib.org/stable/api/_as_gen/matplotlib.pyplot.rc.html
+    # see https://matplotlib.org/stable/api/matplotlib_configuration_api.html
     
     plt.rc('figure', titlesize=FONTSIZE['BB'], figsize = FIGSIZE)  # fontsize of the figure    
-    plt.rc('axes',   titlesize=FONTSIZE['B'], labelsize = FONTSIZE['M'])    # fontsize of the axes (created with subplots)
+    plt.rc('axes',   titlesize=FONTSIZE['BB'], labelsize = FONTSIZE['B'])    # fontsize of the axes (created with subplots)
     plt.rc('legend', fontsize=FONTSIZE['S'])    # legend fontsize
+
+    # plt.rc('text', usetex=True)
+    # plt.rcParams['text.latex.preamble']=[r"\usepackage{amsmath}"]
     
     #TO DO: find a way to initialize plt.tight_layout() that holds for every plot
         
     # plt.rc('font', size=SMALL_SIZE)          # controls default text sizes
-    # plt.rc('xtick', labelsize=45)    # fontsize of the tick labels
-    # plt.rc('ytick', labelsize=SMALL_SIZE)    # fontsize of the tick labels
-    # plt.rc('legend', fontsize=SMALL_SIZE)    # legend fontsize
+    plt.rc('xtick', labelsize=FONTSIZE['S'])    # fontsize of the tick labels
+    plt.rc('ytick', labelsize=FONTSIZE['S'])    # fontsize of the tick labels
+
+
 
     
 # INITIALIZATION FOR AXES
@@ -70,8 +65,8 @@ def plot(axes, x, y, *args, xlim=None, **kwargs):
         xmax = xlim[1]
     
     xcut = x[xmin:xmax]
-    if issubclass(type(y), dt.data_stats):
-        ycut = y.mean()[xmin:xmax]
+    if issubclass(type(y), dM.dataStats):
+        ycut = y.mean[xmin:xmax]
     else:
         ycut = y[xmin:xmax]
 
@@ -94,9 +89,9 @@ def errplot(axes, x, y, *args, xlim=None, yerr = None, **kwargs):
     
     xcut = x[xmin:xmax]
     
-    if yerr is None and issubclass(type(y), dt.data_stats):
-        ycut = y.mean()[xmin:xmax]
-        yerr = y.err()[xmin:xmax]
+    if yerr is None and issubclass(type(y), dM.dataStats):
+        ycut = y.mean[xmin:xmax]
+        yerr = y.err[xmin:xmax]
     else:
         ycut = y[xmin:xmax]
         yerr = yerr[xmin:xmax]
@@ -106,21 +101,7 @@ def errplot(axes, x, y, *args, xlim=None, yerr = None, **kwargs):
     axes.set_title(LABELS['title'])#fontsize['title'])
     axes.set_xlabel(LABELS['x'])
     axes.set_ylabel(LABELS['y'])
-    
-    
-def print_axes(axb):
-    fig = plt.figure(figsize=(2,2))
-    ax=axb
-    ax.figure=fig
-    fig.axes.append(ax)
-    fig.add_axes(ax)
 
-
-    # dummy = fig.add_subplot(111)
-    # ax.set_position(dummy.get_position())
-    # dummy.remove()
-    # plt.show()
-    #return fig
 
 # =============================================================================
 # FIT
@@ -163,13 +144,13 @@ def cov(data_in, num_config, rangefit, thin=1):
     xmax = rangefit[1]+1
     num_points = xmax-xmin
     
-    mean_cut = data_in.mean()[xmin:xmax:thin]
+    mean_cut = data_in.mean[xmin:xmax:thin]
     num_points = len(mean_cut)
     
     bins_cut = np.array([])
     Cov = np.array([])
     for j in range(num_config):
-        bins_cut_aux = data_in.bins()[j][xmin:xmax:thin]
+        bins_cut_aux = data_in.bins[j][xmin:xmax:thin]
         
         # Covariance (already applying cuts)
         vec     = bins_cut_aux - mean_cut
@@ -194,190 +175,82 @@ def cov_inv_sqrt(data_in, num_config, rangefit, thin=1):
     return Cov_inv_sqrt
 
 # fit function
-def fit(x, data_in, fit_function, func_args=None, rangefit=None, thin=1, guess = [1, 1], correlated=False, savepath=None):
-        num_config = data_in.bins().shape[0]
-        xmin = rangefit[0]
-        xmax = rangefit[1]+1
-        num_points = xmax-xmin
-        err_fun = data_in.err_fun
-        
-        xcut    = x[xmin:xmax:thin]
-        mean_cut = data_in.mean()[xmin:xmax:thin] #array_in_mean, cutf, cutb, thin)
-        bins_cut = np.apply_along_axis(lambda x: x[xmin:xmax:thin], 1, data_in.bins())
-        num_points = len(xcut)
-        
-        if correlated == True:
-            Cov_inv_sqrt = cov_inv_sqrt(data_in, num_config, rangefit, thin)
-        elif correlated == False:
-            Cov_inv_sqrt = np.diag( 1 / data_in.err()[xmin:xmax:thin] )
-  
-                    
-        def res(param, data):
-            if func_args == None:
-                func = fit_function(param, xcut)
-                return np.dot( Cov_inv_sqrt, func - data)            
-            else:
-                func = fit_function(param, xcut, func_args)
-                return np.dot( Cov_inv_sqrt, func - data)    
+def fit(x, data_in, fit_function, func_args=None, rangefit=None, thin=1, guess = [1, 1], correlated=False):
+    num_config = data_in.num_bins()
+    xmin = rangefit[0]
+    xmax = rangefit[1]+1
+    num_points = xmax-xmin
+    errFun = data_in.errFun
+    
+    xcut    = x[xmin:xmax:thin]
+    mean_cut = data_in.mean[xmin:xmax:thin] #array_in_mean, cutf, cutb, thin)
+    bins_cut = np.apply_along_axis(lambda x: x[xmin:xmax:thin], 1, data_in.bins)
+    num_points = len(xcut)
+    
+    if correlated == True:
+        Cov_inv_sqrt = cov_inv_sqrt(data_in, num_config, rangefit, thin)
+    elif correlated == False:
+        Cov_inv_sqrt = np.diag( 1 / data_in.err[xmin:xmax:thin] )
 
-             
-        sol    = leastsq( res, guess, args = (mean_cut),  maxfev=2000, ftol=1e-10, xtol=1e-10, full_output=True)
-        chisq  = chi_sq(sol)
-
-        fit_mean = sol[0]
-        num_param = len(sol[0])
-         
-        # bins
-        fit_bins = np.array([])
-        for k in range(num_config):
-            sol    = leastsq( res, guess, args = (bins_cut[k]), maxfev=2000, ftol=1e-10, xtol=1e-10, full_output=True ) 
-            fit_bins = np.append(fit_bins, sol[0])  
-            
-
-        fit_bins  = np.transpose(np.reshape(fit_bins, (num_config, len(fit_mean))))
-        
-        fit_err = np.array([])
-        for p in range(num_param):
-            fit_err_aux = err_fun(fit_mean[p], fit_bins[p]) 
-            fit_err     = np.append(fit_err, fit_err_aux)
-         
-
-
-        print("\n################ FIT RESULTS #######################")
-        print("# Correlated =", correlated)
-        print("# IndexRange = [" + str(xmin) + ", " + str(rangefit[1]) + "]")
-        print("# Range      = [" + str(xcut[0])+ ", " + str(xcut[-1]) + "]")
-        print("# Thinning   = " + str(thin))
-        for p in range(num_param):
-            print('# param_' + str(p) + ' = ', fit_mean[p], "  err =", fit_err[p] )
-        print('# CHISQ   = ', chisq[1], "  pvalue = ", chisq[0] )
-        print("####################################################\n")
-        
-
-        out = []
-        if num_param==1:
-            out_aux = np.concatenate( (np.array([fit_mean[p]]), np.array([fit_err[p]]), fit_bins[p]))
-            out = dt.data_stats(out_aux, data_in.stats_type)
+                
+    def res(param, data):
+        if func_args == None:
+            func = fit_function(param, xcut)
+            return np.dot( Cov_inv_sqrt, func - data)            
         else:
-            for p in range(num_param):
-                out_aux = np.concatenate([np.array([fit_mean[p], fit_err[p]]), fit_bins[p]])
-                out_aux = dt.data_stats(out_aux, data_in.stats_type)
-                out.append(out_aux)     
+            func = fit_function(param, xcut, func_args)
+            return np.dot( Cov_inv_sqrt, func - data)    
+
             
+    sol    = leastsq( res, guess, args = (mean_cut),  maxfev=2000, ftol=1e-10, xtol=1e-10, full_output=True)
+    chisq  = chi_sq(sol)
 
-        if not savepath is None:
-            fit_param_a = np.array([])
-            for fit_param in out:
-                fit_param_a = np.append(fit_param_a, fit_param.data)
-            fit_param_a = np.reshape(fit_param_a, (num_param, num_config+2))
-
-            with open(savepath, 'w') as new: 
-                np.savetxt(new, np.vstack([fit_param_a]))
+    fit_mean = sol[0]
+    num_param = len(sol[0])
         
-           
-        return out
-
-
-# fit function
-def fit_raw(n, data_in, fit_function, func_args):
-        assert(n+1==len(data_in.mean()))
-        num_bins = data_in.bins().shape[0]
-        err_fun = data_in.err_fun
-        guess=np.append(1,[0 for i in range(n)])
-
-        # # if correlated == True:
-        #Cov_inv_sqrt = cov_inv_sqrt(data_in, num_config, rangefit)
-        # if correlated == False:
-        #     Cov_inv_sqrt = np.diag( 1 / data_in.err())
-  
-        def sigmoid(param):
-            l = 1
-            out = 0
-            for p in param:
-                out+=  1/(1+np.exp(-p+l)) * 1/(1+np.exp(p-l))
-            return out
-
+    # bins
+    fit_bins = np.array([])
+    for k in range(num_config):
+        sol    = leastsq( res, guess, args = (bins_cut[k]), maxfev=2000, ftol=1e-10, xtol=1e-10, full_output=True ) 
+        fit_bins = np.append(fit_bins, sol[0])  
         
 
-        # def chisq_fun(param, data):
-        #     out = fit_function(param, 0, func_args) - data[0]
-        #     for d in range(1, n):
-        #         def res(param, data):
-        #             func = fit_function(param, d, func_args)  
-        #             return (func - data[d])/data_in.err()[d] 
-        #         out += res(param, data)**2 + sigmoid(param)
-        #     return out
-
-        ###### if correlated...tmp
-        Cov_inv_sqrt = cov_inv_sqrt(data_in, num_bins, (1,n+1))
-        def chisq_fun(param, data):
-            #out = fit_function(param, 0, func_args) - data[0]
-            out = np.array([])
-            for d in range(1, n+1):
-                def res(param, data):
-                    func = fit_function(param, d, func_args)  
-                    return (func - data[d])
-                out = np.append(out, res(param, data) )#+ sigmoid(param))
-            return np.sum(np.dot(Cov_inv_sqrt, out)**2)
-        ########
+    fit_bins  = np.transpose(np.reshape(fit_bins, (num_config, len(fit_mean))))
+    
+    fit_err = np.array([])
+    for p in range(num_param):
+        fit_err_aux = errFun(fit_mean[p], fit_bins[p]) 
+        fit_err     = np.append(fit_err, fit_err_aux)
         
-        
-        sol = minimize(chisq_fun, guess, args=data_in.mean(), tol=1e-6,
-                        bounds=[(1,1), *[(-1,1) for i in range(n)]], method='Powell')
-        fit_mean = sol.x 
-        print(sol.x)
-
-        fit_bins = np.apply_along_axis(lambda bin: minimize(chisq_fun, guess, args=bin, tol=1e-6, 
-                                        bounds=[(1,1), *[(-1,1) for i in range(n)]], method='Powell').x, 1, data_in.bins()) 
-        fit_err  = err_fun(fit_mean, fit_bins) 
-
-        print("\n################ FIT RESULTS #######################")
-        for p in range(n+1):
-            print('# Tn_' + str(p) + ' = ', fit_mean[p], "  err =", fit_err[p] )
-        print("####################################################\n")
 
 
-        out = dt.data_stats(np.concatenate([np.array([fit_mean, fit_err]), fit_bins]))
-        return out
+    print("\n################ FIT RESULTS #######################")
+    print("# Correlated =", correlated)
+    print("# IndexRange = [" + str(xmin) + ", " + str(rangefit[1]) + "]")
+    print("# Range      = [" + str(xcut[0])+ ", " + str(xcut[-1]) + "]")
+    print("# Thinning   = " + str(thin))
+    for p in range(num_param):
+        print('# param_' + str(p) + ' = ', fit_mean[p], "  err =", fit_err[p] )
+    print('# CHISQ   = ', chisq[1], "  pvalue = ", chisq[0] )
+    print("####################################################\n")
+    
 
-
-
-
-
-# fit function using least_squares
-def fit_squares(n, data_in, fit_function, func_args):
-        num_bins = data_in.bins().shape[0]
-        err_fun  = data_in.err_fun  
-        guess = np.zeros(n+1)
-
-        Cov_inv_sqrt = cov_inv_sqrt(data_in, num_bins, (1,n+1))
-        def res_mean(param):
-            func = fit_function(param, np.arange(1, n+1), func_args)
-            return np.dot(Cov_inv_sqrt, func - data_in.mean()[1:])        
-
-        sol_mean = least_squares(res_mean, guess, bounds=(-1,1), ftol=1e-10, xtol=1e-10, method='trf')
-        fit_mean = sol_mean.x
-        print(sol_mean)
-
-        # fit_bins = np.array([])
-        # for b in range(num_bins):
-        #     def res_bins(param):
-        #         func = fit_function(param, np.arange(1, n+1), func_args)
-        #         return np.dot(Cov_inv_sqrt, func - data_in.bins(b)[1:]) 
-        #     #print("Bins number:", b)
-        #     sol_bins = least_squares(res_bins, guess, bounds=(-1,1), ftol=1e-6, xtol=1e-6, method='trf')
-        #     fit_bins = np.append(fit_bins, sol_bins.x)
-        #     print(sol_bins.x)
-
-        # fit_bins = np.reshape(fit_bins, (num_bins, n+1))
-            
-        # fit_err = err_fun(fit_mean, fit_bins)
-        # print("\n################ FIT RESULTS least_squares #######################")
-        # for p in range(n+1):
-        #     print('# Tn_' + str(p) + ' = ', fit_mean[p], "  err =", fit_err[p] )
-        # print("###################################################################\n")
-
-        # fit = dt.data_stats(np.concatenate([[fit_mean, fit_err], fit_bins]))
-
-        # return fit
-
+    out = []
+    if num_param==1:        
+        mean_p = np.array([fit_mean[p]])
+        err_p = np.array([fit_err[p]])
+        bins_p = np.reshape(fit_bins[p], (len(fit_bins[p]), 1) )
+        out = np.array([mean_p, err_p])
+        out = np.concatenate([out, bins_p], axis=0)
+        return dM.dataStats(out, data_in.statsType)
+    else:
+        for p in range(num_param):
+            mean_p = np.array([fit_mean[p]])
+            err_p = np.array([fit_err[p]])
+            bins_p = np.reshape(fit_bins[p], (len(fit_bins[p]), 1) )
+            out_aux = np.array([mean_p, err_p])
+            out_aux = np.concatenate([out_aux, bins_p], axis=0)
+            out_aux = dM.dataStats(out_aux, data_in.statsType)
+            out.append(out_aux)     
+    
+    return out

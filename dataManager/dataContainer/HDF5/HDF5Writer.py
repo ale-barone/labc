@@ -88,21 +88,21 @@ class HDF5Writer:
 
     class stats(_HDF5WriterBase):
 
-        def init_groupStructure(self, stats_type, stats_par):
+        def init_groupStructure(self, statsType):
             if not self.groupStructure:
                 self.groupStructure = True
                 with h5py.File(self.file, 'r+') as hf:
                     hf.create_group('mean')
                     hf.create_group('err')
-                    hf.attrs['stats_type'] = stats_type
+                    hf.attrs['statsType'] = statsType.ID
                     Gbins = hf.create_group('bins')
                     # TODO: nicer information here (must be compatible with checks in dataAnalysis)
-                    if stats_type=='boot':
-                        num_bins, seed = stats_par 
-                        Gbins.attrs['stats_par'] = str(num_bins) + ', ' + str(seed)
-                    elif stats_type=='jack':
-                        num_bins = stats_par
-                        Gbins.attrs['stats_par'] = str(num_bins) 
+                    if statsType.ID=='boot':
+                        num_bins, seed = statsType.num_bins, statsType.seed 
+                        Gbins.attrs['statsPar'] = str(num_bins) + ', ' + str(seed)
+                    elif statsType.ID=='jack':
+                        num_bins = statsType.num_bins
+                        Gbins.attrs['statsPar'] = str(num_bins) 
                     self.groups = get_groups(self.file)
             else:
                 raise AlreadyInitError("Groups structure already initialized.")

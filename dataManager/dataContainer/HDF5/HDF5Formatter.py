@@ -29,8 +29,8 @@ class HDF5Formatter:
             self.statsType = "TODO" # TODO NEED TO IMPLEMENT THIS (reads it from file)
             self.statsID = get_statsID(file)
 
-
-        def format(self):
+        # TODO I don't like having *args as a placeholder...
+        def format(self, *args):
             with h5py.File(self.file, 'r') as hf:
                 mean = np.asarray(hf['mean/mean'])
                 err = np.asarray(hf['err/err'])
