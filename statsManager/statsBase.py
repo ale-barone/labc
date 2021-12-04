@@ -27,10 +27,19 @@ class Istats(ABC):
 
 class statsBase(Istats):
     
-    def __init__(self, num_config, num_bins):
+    def __init__(self, num_config, num_bins, seed=None):
         self.num_config = num_config
         self.num_bins = num_bins
+        self.seed = seed
         self.prefactor = None
+        self.ID = None
+    
+    def __str__(self):
+        out = f"statsType = '{self.ID}':" \
+              f"\n -num_config = {self.num_config}" \
+              f"\n -num_bins = {self.num_bins}" \
+              f"\n -seed = {self.seed}"
+        return out
 
     def generate_bins(self, array_raw_in):
         pass
@@ -49,8 +58,7 @@ class statsBase(Istats):
         err = self.errFun(mean, bins)  
         return mean, err, bins
 
-    @staticmethod
-    def cov2(data_x_in, data_y_in, *, num_bins=None, rangefit=None, thin=1):
+    def cov2(self, data_x_in, data_y_in, *, num_bins=None, rangefit=None, thin=1):
         """Compute the covariance of two dataStats objects."""
         
         T = data_x_in.T()
@@ -74,11 +82,11 @@ class statsBase(Istats):
             Cov = np.append(Cov, Cov_aux)
     
         Cov = np.reshape(Cov, (num_bins, num_points, num_points))
-        Cov = (num_bins-1) * np.mean(Cov, 0)
+        Cov = self.prefactor * np.mean(Cov, 0)
         return Cov
 
     def cov(self, data_x_in, *, num_bins=None, rangefit=None, thin=1):
-        return self.cov2(data_x_in, data_x_in, num_bins=None, rangefit=None, thin=1)
+        return self.cov2(data_x_in, data_x_in, num_bins=num_bins, rangefit=rangefit, thin=1)
 
     def cov_blocks(self, data_array_in, num_bins=None, rangefit=None, thin=1):
         """General covariance matrix possibly for different input arrays."""

@@ -1,13 +1,17 @@
 import h5py
 import numpy as np
 
-import pathlib
+from math import log10, floor
 from LatticeABC.dataManager import dataContainer as dC
 from .Utilities import _get_extension
 from LatticeABC.dataManager.dataContainer.HDF5.HDF5Utilities import get_statsID
 import matplotlib.pyplot as plt
 
-
+# TODO: need to decide how I want pass data into dataStats
+def concatenate_stats(mean, err, bins):
+    out = np.array([mean, err])
+    out = np.concatenate([out, bins], axis=0)
+    return out
 
 # READER WITH STATS CONNOTATION
 class dataStats:    
@@ -21,6 +25,42 @@ class dataStats:
         # stats
         self.statsType = statsType
         self.errFun = statsType.errFun
+
+    # def __repr__(self) -> str:
+    #     def get_power(num):
+    #         return floor(log10(num))    
+
+    #     def count_significantDigits(num):
+    #         double = 15
+    #         power_num = floor(log10(num))
+    #         num_exp = f"{num:.{double}e}"
+    #         print(num_exp)
+    #         digits = str( float(num_exp) / 10**power_num ).replace('.', '')
+    #         return len(digits)
+
+    #     def print_single(mean, err):
+    #         rel_err = err/mean
+    #         power_rel = floor(log10(rel_err))  
+    #         power_err = floor(log10(err))
+            
+    #         if power_rel<-4: 
+    #             out = f'{mean:.4e} +- {err:.4e}' 
+                
+    #         elif power_rel>0:
+    #             out = 'large error!'  
+                
+    #         else:
+    #             precision = np.abs(floor(log10(err))-1)
+    #             err_out = err / (10**(power_err-1))
+    #             if 
+    #             out = f'{mean:.{precision}f}({err_out:.0f})'
+         
+    #         return out
+
+    #     print('[')
+    #     for m, e in zip(self.mean, self.err):
+    #         print(print_single(m, e), ',')
+    #     print(']')
 
     def T(self):
         return len(self.mean)
@@ -41,13 +81,30 @@ class dataStats:
             raise NotImplementedError(f"File extension '{ext}' not implemented!")
 
 
-
     # TODO: need method to print information nicely
     
     def concatenate_dataStats(self, mean, err, bins):
         out = np.array([mean, err])
         out = np.concatenate([out, bins], axis=0)
         return dataStats(out, self.statsType)
+    
+    def push(self, other):
+        out_mean = np.append([other], self.mean)
+        out_bins = np.array([ np.append([other], self.bins[b]) for b in range(self.num_bins()) ])
+        out_err = self.errFun(out_mean, out_bins)
+        
+        out = self.concatenate_dataStats(out_mean, out_err, out_bins)
+        return out
+    
+    def roll(self, shift):
+        out_mean = np.roll(self.mean, shift)
+        out_bins = np.roll(self.bins, shift, axis=1)
+        out_err = np.roll(self.err, shift)
+
+        out = self.concatenate_dataStats(out_mean, out_err, out_bins)
+        return out
+
+  
 
     # OVERLOAD OF MATH OPERATIONS
     def __mul__(self, other):
@@ -75,7 +132,7 @@ class dataStats:
         elif isinstance(other, (int, float)):
             out_mean = self.mean * other
             out_bins = self.bins * other
-            out_err  = self.err * other #self.errFun(out_mean, out_bins) #!!
+            out_err = self.err * other #self.errFun(out_mean, out_bins) #!!
             
             out = self.concatenate_dataStats(out_mean, out_err, out_bins)
         return out
@@ -85,13 +142,13 @@ class dataStats:
         if isinstance(other, dataStats):
             out_mean = self.mean / other.mean
             out_bins = self.bins / other.bins
-            out_err  = self.errFun(out_mean, out_bins)
+            out_err = self.errFun(out_mean, out_bins)
             
             out = self.concatenate_dataStats(out_mean, out_err, out_bins)
         elif isinstance(other, (int, float)):
             out_mean = self.mean / other
             out_bins = self.bins / other
-            out_err  = self.errFun(out_mean, out_bins)
+            out_err = self.errFun(out_mean, out_bins)
             
             out = self.concatenate_dataStats(out_mean, out_err, out_bins)
         return out
@@ -101,7 +158,7 @@ class dataStats:
         if isinstance(other, dataStats):
             out_mean = self.mean + other.mean
             out_bins = self.bins + other.bins
-            out_err  = self.errFun(out_mean, out_bins)
+            out_err = self.errFun(out_mean, out_bins)
             
             out = self.concatenate_dataStats(out_mean, out_err, out_bins)
             return out 
@@ -112,7 +169,7 @@ class dataStats:
         if isinstance(other, dataStats):
             out_mean = self.mean - other.mean
             out_bins = self.bins - other.bins
-            out_err  = self.errFun(out_mean, out_bins)
+            out_err = self.errFun(out_mean, out_bins)
             
             out = self.concatenate_dataStats(out_mean, out_err, out_bins)
             return out   

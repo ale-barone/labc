@@ -7,6 +7,7 @@
 # - choosing which statistics to use, either 'jack' or 'boot' and set their paramters, if any
 # - (choosing the file format we are going to work with? )
 
+import numpy as np
 from LatticeABC import dataManager as _dM
 from LatticeABC.dataManager import dataContainer as _dC
 
@@ -47,6 +48,10 @@ class analysis:
         tsrc_list = self.tsrc_list if tsrc_list is None else tuple(tsrc_list)
         formatter = _dC.formatter(file, self.statsType)
         data = formatter.format(tsrc_list)
+        return _dM.dataStats(data, self.statsType)
+    
+    def dataStats_data(self, data: np.ndarray, tsrc_list: list=None) -> _dM.dataStats:
+        tsrc_list = self.tsrc_list if tsrc_list is None else tuple(tsrc_list)
         return _dM.dataStats(data, self.statsType)
 
     # TODO at the moment it's the same as dataStats

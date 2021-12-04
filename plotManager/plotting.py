@@ -174,12 +174,19 @@ def cov_inv_sqrt(data_in, num_config, rangefit, thin=1):
  
     return Cov_inv_sqrt
 
+# def cholesky(cov):
+#     cov_inv = np.linalg.inv(cov)
+#     cov_inv_sqrt = cholesky(cov_inv)
+#     return cov_inv_sqrt
+
 # fit function
 def fit(x, data_in, fit_function, func_args=None, rangefit=None, thin=1, guess = [1, 1], correlated=False):
-    num_config = data_in.num_bins()
+    num_bins = data_in.num_bins()
+    
     xmin = rangefit[0]
-    xmax = rangefit[1]+1
-    num_points = xmax-xmin
+    xmax = rangefit[1]
+
+    statsType = data_in.statsType
     errFun = data_in.errFun
     
     xcut    = x[xmin:xmax:thin]
@@ -188,7 +195,8 @@ def fit(x, data_in, fit_function, func_args=None, rangefit=None, thin=1, guess =
     num_points = len(xcut)
     
     if correlated == True:
-        Cov_inv_sqrt = cov_inv_sqrt(data_in, num_config, rangefit, thin)
+        cov = statsType.cov(data_in, num_bins=num_bins, rangefit=rangefit, thin=1)
+        Cov_inv_sqrt = cholesky(cov)
     elif correlated == False:
         Cov_inv_sqrt = np.diag( 1 / data_in.err[xmin:xmax:thin] )
 
@@ -210,12 +218,12 @@ def fit(x, data_in, fit_function, func_args=None, rangefit=None, thin=1, guess =
         
     # bins
     fit_bins = np.array([])
-    for k in range(num_config):
+    for k in range(num_bins):
         sol    = leastsq( res, guess, args = (bins_cut[k]), maxfev=2000, ftol=1e-10, xtol=1e-10, full_output=True ) 
         fit_bins = np.append(fit_bins, sol[0])  
         
 
-    fit_bins  = np.transpose(np.reshape(fit_bins, (num_config, len(fit_mean))))
+    fit_bins  = np.transpose(np.reshape(fit_bins, (num_bins, len(fit_mean))))
     
     fit_err = np.array([])
     for p in range(num_param):
