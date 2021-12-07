@@ -88,7 +88,8 @@ class dataStats:
         out = np.concatenate([out, bins], axis=0)
         return dataStats(out, self.statsType)
     
-    def push(self, other):
+    # not sure if these methods (NOT the dunders) should create a new object...
+    def append(self, other):
         out_mean = np.append([other], self.mean)
         out_bins = np.array([ np.append([other], self.bins[b]) for b in range(self.num_bins()) ])
         out_err = self.errFun(out_mean, out_bins)
@@ -135,8 +136,7 @@ class dataStats:
             out_err = self.err * other #self.errFun(out_mean, out_bins) #!!
             
             out = self.concatenate_dataStats(out_mean, out_err, out_bins)
-        return out
-        
+        return out  
 
     def __truediv__(self, other):
         if isinstance(other, dataStats):
