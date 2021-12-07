@@ -13,7 +13,8 @@ class statsBoot(statsBase):
         """It generates resampled bins from raw data using jackknife."""
         num_config = np.size(array_raw_in, 0)
         T = np.size(array_raw_in, 1)
-
+        
+        np.random.seed(self.seed)
         bins = np.random.randint(0, num_config, size=(num_config, self.num_bins)).transpose() 
         bins = np.mean(array_raw_in[bins], axis=1)
         return bins
