@@ -30,7 +30,7 @@ def _print_title(title: str) -> None:
 class analysis:
     """Initializer for the analysis."""
 
-    def __init__(self, statsType, tsrc_list, config_list): # I need also config list in principle
+    def __init__(self, statsType, tsrc_list, config_list):
         self.tsrc_list = tsrc_list
         self.config_list = config_list
         self.statsType = statsType
@@ -58,7 +58,7 @@ class analysis:
     def corrStats(self, file: str, tsrc_list: list=None) -> _dM.dataStats:
         tsrc_list = self.tsrc_list if tsrc_list is None else tuple(tsrc_list)
         formatter = _dC.formatter(file, self.statsType)
-        data = formatter.format(self.tsrc_list)
+        data = formatter.format(tsrc_list)
         return _dM.corrStats(data, self.statsType)
     
     def add_global(self, name: str, value) -> None:
