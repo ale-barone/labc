@@ -25,7 +25,17 @@ def _print_title(title: str) -> None:
     print(f"# {title}")
     _print_bar()
 
+# it would be nice to be have a function (built-in method of class "database")
+# for a sort of "analysis_function" which
+# - define a quantity of interest (i.e. fit, combination of correlators,...)
+# - check if already exist and if it corresponds to the analysis object currently in use
+# - if not, it recomputes the quantity on the fly and store the results it into a cache
+#   in case it needs to be recomputed somewhere else in the same run
+# - (if told so) write actual data from the cache
 
+# I could implement this nicely
+class database:
+    pass
 
 class analysis:
     """Initializer for the analysis."""
@@ -35,7 +45,18 @@ class analysis:
         self.config_list = config_list
         self.statsType = statsType
         self.globals = {}
-        self.files = [] # I don't like this solution
+        # self.files = {} # I don't like this solution
+        self.database = database()
+        self.get = database()
+        self.objdatabase = database()
+        self.obj = database()
+    
+    def copy(self):
+        new = type(self)(self.statsType, self.tsrc_list, self.config_list)
+        new.globals = self.globals
+        new.database = self.database
+        new._update_database()
+        return new
 
     def print_setup(self):
         _print_title("ANALYSIS SETUP")
@@ -69,16 +90,62 @@ class analysis:
             raise _AlreadyDefined(
                 message = f"Global variable '{name}' already defined with value: {value}"
             )
+       
+    def _update_database(self):
+        self.get = database() # clear the 'get' operation
+
+        for an_func in tuple(self.database.__dict__.values()):
+            func = an_func(self)
+            if not hasattr(self.get, func.__name__):
+                setattr(self.get, func.__name__, func)
+            else:
+                raise _AlreadyDefined(
+                    message = f"Database function '{func}' already defined."
+                )
+
+
+    def add_func(self, an_func):
+        """Add functions that retrieves the desired data."""
+        if not hasattr(self.database, an_func.__name__):
+            setattr(self.database, an_func.__name__, an_func)
+        else:
+            raise _AlreadyDefined(
+                message = f"Database raw function '{an_func}' already defined."
+            )
+
+        func = an_func(self)
+        if not hasattr(self.get, func.__name__):
+            setattr(self.get, func.__name__, func)
+        else:
+            raise _AlreadyDefined(
+                message = f"Database function '{func}' already defined."
+            )
     
+    def add_obj(self, an_obj):
+        """Add object (class)."""
+        if not hasattr(self.objdatabase, an_obj.__name__):
+            setattr(self.objdatabase, an_obj.__name__, an_obj)
+        else:
+            raise _AlreadyDefined(
+                message = f"Class/object '{an_obj}' already defined."
+            )
+
+        obj = an_obj(self)
+        if not hasattr(self.obj, obj.__name__):
+            setattr(self.obj, obj.__name__, obj)
+        else:
+            raise _AlreadyDefined(
+                message = f"Class/obj '{obj}' already defined."
+            )
+  
+
     def print_globals(self):
         _print_title("GLOBAL VARIABLES")
         for key, value in self.globals.items():
             print(f"# {key} =", value)
         _print_bar()
 
-    # TODO: I don't like this, needs change
-    def add_file(self, file_fun):
-        self.files.append(file_fun)
+  
 
 
 
