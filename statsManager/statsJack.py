@@ -10,17 +10,8 @@ class statsJack(statsBase):
 
     def generate_bins(self, array_raw_in):
         """It generates resampled bins from raw data using jackknife."""
-        num_bins = np.size(array_raw_in, 0)
-        T = np.size(array_raw_in, 1)
-
-        # TODO: remove the append and implement this in a faster (and yes, smarter) way
-        bins = np.array([])
-        for j in range(self.num_bins):
-            array_raw_in_delete1 = np.delete(array_raw_in, j, 0)
-            bin_j = np.mean(array_raw_in_delete1, 0)
-            bins = np.append(bins, bin_j)   
-        bins = np.reshape(bins, (num_bins, T))
+        bins = np.array([np.delete(np.arange(self.num_bins), b, 0) for b in range(self.num_bins)])
+        bins = np.mean(array_raw_in[bins], axis=1)
         return bins
-
 
 
