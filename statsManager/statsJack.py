@@ -13,6 +13,7 @@ class statsJack(statsBase):
         num_bins = np.size(array_raw_in, 0)
         T = np.size(array_raw_in, 1)
 
+        # TODO: remove the append and implement this in a faster (and yes, smarter) way
         bins = np.array([])
         for j in range(self.num_bins):
             array_raw_in_delete1 = np.delete(array_raw_in, j, 0)

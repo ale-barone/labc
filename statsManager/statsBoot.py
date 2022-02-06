@@ -10,7 +10,7 @@ class statsBoot(statsBase):
         self.ID = 'boot'
 
     def generate_bins(self, array_raw_in):
-        """It generates resampled bins from raw data using jackknife."""
+        """It generates resampled bins from raw data using bootstrap."""
         num_config = np.size(array_raw_in, 0)
         T = np.size(array_raw_in, 1)
         

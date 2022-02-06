@@ -1,5 +1,6 @@
 import numpy as np 
 from abc import ABC, abstractmethod
+from LatticeABC import dataManager as dM
 
 class Istats(ABC):
     """Base class for managing statistics."""
@@ -58,52 +59,57 @@ class statsBase(Istats):
         err = self.errFun(mean, bins)  
         return mean, err, bins
 
+
     def cov2(self, data_x_in, data_y_in, *, num_bins=None, rangefit=None, thin=1):
         """Compute the covariance of two dataStats objects."""
         
         T = data_x_in.T()
         num_bins = data_x_in.num_bins() if num_bins is None else num_bins
-
         xmin, xmax = (0, T) if rangefit is None else (rangefit[0], rangefit[1])
-        num_points = xmax-xmin
         
-        mean_x_cut = data_x_in.mean[xmin:xmax:thin]
-        mean_y_cut = data_y_in.mean[xmin:xmax:thin]
+        data_x_cut_mean = data_x_in.mean[xmin:xmax:thin]
+        data_y_cut_mean = data_y_in.mean[xmin:xmax:thin]
+        num_points = len(data_x_cut_mean)
         
-        Cov = np.array([])
-        for j in range(num_bins):
-            bins_x_cut_aux = data_x_in.bins[j][xmin:xmax:thin]
-            bins_y_cut_aux = data_y_in.bins[j][xmin:xmax:thin]
+        cov = np.empty(shape=(num_bins, num_points, num_points))
+        for b in range(num_bins):
+            bins_x_cut_aux = data_x_in.bins[b][xmin:xmax:thin]
+            bins_y_cut_aux = data_y_in.bins[b][xmin:xmax:thin]
             
             # Covariance (already applying cuts)
-            vec_x = bins_x_cut_aux - mean_x_cut
-            vec_y = bins_y_cut_aux - mean_y_cut
-            Cov_aux = np.outer(vec_x, vec_y)
-            Cov = np.append(Cov, Cov_aux)
-    
-        Cov = np.reshape(Cov, (num_bins, num_points, num_points))
-        Cov = self.prefactor * np.mean(Cov, 0)
-        return Cov
+            vec_x = bins_x_cut_aux - data_x_cut_mean
+            vec_y = bins_y_cut_aux - data_y_cut_mean
+            cov[b] = np.outer(vec_x, vec_y)
+  
+        cov = self.prefactor * np.mean(cov, 0)
+        return cov
 
     def cov(self, data_x_in, *, num_bins=None, rangefit=None, thin=1):
         return self.cov2(data_x_in, data_x_in, num_bins=num_bins, rangefit=rangefit, thin=1)
 
-    def cov_blocks(self, data_array_in, num_bins=None, rangefit=None, thin=1):
+    def cov_blocks(self, *data_in, num_bins=None, rangefit=None, thin=1):
         """General covariance matrix possibly for different input arrays."""
-        data_array_in = tuple(data_array_in)
-        
-        n = len(data_array_in) * data_array_in[0].T()
-        cov = np.array([])
-        for data_x_in in data_array_in:
-            cov_block_row = self.cov2(data_x_in, data_array_in[0],  num_bins=num_bins, rangefit=rangefit, thin=thin)
-            for data_y_in in data_array_in[1:]:
-                cov_block = self.cov2(data_x_in, data_y_in,  num_bins=num_bins, rangefit=rangefit, thin=thin) 
-                cov_block_row = np.append(cov_block_row, cov_block, axis=1)
-                
-            cov = np.append(cov, cov_block_row)
-        cov = np.reshape(cov, (n,n))
+        data_in_merged = dM.merge(*data_in)
+        return self.cov(data_in_merged, num_bins=num_bins, rangefit=rangefit, thin=thin)
 
-        return cov
+    # OLD
+    # def cov_blocks(self, data_array_in, num_bins=None, rangefit=None, thin=1):
+    #     """General covariance matrix possibly for different input arrays."""
+    #     data_array_in = tuple(data_array_in)
+        
+    #     n = len(data_array_in) * data_array_in[0].T()
+    #     cov = np.array([])
+    #     for data_x_in in data_array_in:
+    #         cov_block_row = self.cov2(data_x_in, data_array_in[0],  num_bins=num_bins, rangefit=rangefit, thin=thin)
+    #         for data_y_in in data_array_in[1:]:
+    #             cov_block = self.cov2(data_x_in, data_y_in,  num_bins=num_bins, rangefit=rangefit, thin=thin) 
+    #             cov_block_row = np.append(cov_block_row, cov_block, axis=1)
+                
+    #         cov = np.append(cov, cov_block_row)
+    #     cov = np.reshape(cov, (n,n))
+    #     return cov
+    
+    
 
     def corr(self, *arrays_in):
         """General correlation matrix possibly for different input arrays."""
