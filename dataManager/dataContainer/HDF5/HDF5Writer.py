@@ -107,7 +107,7 @@ class HDF5Writer:
             else:
                 raise AlreadyInitError("Groups structure already initialized.")
         
-        # SHOULD I LIVE MORE FREEDOM? LIKE HERE?
+        # SHOULD I LEAVE MORE FREEDOM? LIKE HERE?
         # I think the freedom should be left only in the standard method write
         # AT MOST, I SHOULD CONTROL THIS A BIT BETTER MYSELF BY READING MORE DOCUMENTATION OF h5py
         # def add_mean(self, *args, **kwargs):

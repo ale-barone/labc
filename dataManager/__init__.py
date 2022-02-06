@@ -8,10 +8,53 @@ from LatticeABC.dataManager.dataContainer.HDF5.HDF5Utilities import get_statsID
 import matplotlib.pyplot as plt
 
 # TODO: need to decide how I want pass data into dataStats
+# def concatenate_stats(mean, err, bins):
+#     out = np.array([mean, err])
+#     out = np.concatenate([out, bins], axis=0)
+#     return out
+
 def concatenate_stats(mean, err, bins):
-    out = np.array([mean, err])
-    out = np.concatenate([out, bins], axis=0)
+    num_bins = bins.shape[0]
+    T = bins.shape[1] 
+    #assert(len(mean)==len(err)==T)
+    # dtype_ = np.dtype([
+    #     ('mean', 'f8', T),
+    #     ('err', 'f8', T),
+    #     ('bins', 'f8', (num_bins, T))
+    #     ]
+    # )
+    if T==1:
+        dtype_=np.dtype([('mean', 'f8'), ('err', 'f8'), ('bins', 'f8', (num_bins, 1))])
+    else:
+        dtype_=np.dtype([('mean', 'f8', T), ('err', 'f8', T), ('bins', 'f8', (num_bins, T))])
+    out = np.array((mean, err, bins), dtype=dtype_)
     return out
+    
+
+def merge(*data_in):    
+    if isinstance(data_in[0], list):
+        data_in = tuple(data_in[0])
+    if isinstance(data_in[0], np.ndarray): 
+        # TODO: implement properly numpy array
+        raise TypeError("np.ndarray not yet implemented.")
+
+    n = len(data_in)
+    statsType = data_in[0].statsType
+    num_bins = data_in[0].num_bins()
+    T = data_in[0].T()
+
+    data_in_mean = np.array([data.mean for data in data_in]).flatten()
+    data_in_err = np.array([data.err for data in data_in]).flatten()
+    data_in_bins = np.empty(shape=(num_bins, n*T))
+    for b in range(num_bins):
+        data_in_bins[b] = np.array([data_in.bins[b] for data_in in data_in]).flatten()
+
+    out = concatenate_stats(data_in_mean, data_in_err, data_in_bins)
+    out = dataStats(out, statsType)
+    return out
+
+    
+
 
 # READER WITH STATS CONNOTATION
 class dataStats:    
@@ -19,12 +62,14 @@ class dataStats:
 
     def __init__(self, data, statsType):
         self.data = data
-        self.mean = np.asarray(data[0])
-        self.err = np.asarray(data[1])
-        self.bins = np.asarray(data[2:])
+        self.mean = data['mean']
+        self.err = data['err']
+        self.bins = data['bins']
+
         # stats
         self.statsType = statsType
         self.errFun = statsType.errFun
+    
 
     # def __repr__(self) -> str:
     #     def get_power(num):
@@ -84,12 +129,11 @@ class dataStats:
     # TODO: need method to print information nicely
     
     def concatenate_dataStats(self, mean, err, bins):
-        out = np.array([mean, err])
-        out = np.concatenate([out, bins], axis=0)
+        out = concatenate_stats(mean, err, bins)
         return dataStats(out, self.statsType)
     
     # not sure if these methods (NOT the dunders) should create a new object...
-    def append(self, other):
+    def push_front(self, other):
         out_mean = np.append([other], self.mean)
         out_bins = np.array([ np.append([other], self.bins[b]) for b in range(self.num_bins()) ])
         out_err = self.errFun(out_mean, out_bins)
@@ -105,7 +149,8 @@ class dataStats:
         out = self.concatenate_dataStats(out_mean, out_err, out_bins)
         return out
 
-  
+    def __len__(self):
+        return self.T()
 
     # OVERLOAD OF MATH OPERATIONS
     def __mul__(self, other):
@@ -184,20 +229,19 @@ class dataStats:
             else:
                 return False
 
+    # def __array__(self, dtype=None):
+    #     ob = type(self)(self.data, self.statsType)
+    #     return np.asarray([ob])
+
     def __getitem__(self, key):
-        out_mean = np.asarray(self.mean[key])
-        out_err = np.asarray(self.err[key])
+        # I should put this down in an "else" statement
+        out_mean = self.mean[key]
+        out_err = self.err[key]
         new_size = out_mean.size
-        if new_size==1:
-            #out_bins = self.bins[:,key]
-            out_mean = np.array([out_mean])
-            out_err = np.array([out_err])
 
         out_bins = np.reshape(self.bins[:,key], (self.num_bins(), new_size))  
         out = self.concatenate_dataStats(out_mean, out_err, out_bins)
         return out
-
-    # TODO some append method?
 
 
     def rel_diff(self, other):
@@ -206,8 +250,7 @@ class dataStats:
         out_bins = np.abs((self.bins - other.bins) / self.bins)
         out_err  = self.errFun(out_mean, out_bins)
 
-        out = np.array([out_mean, out_err])
-        out = dataStats(np.concatenate([out, out_bins], axis=0), self.statsType)
+        out = self.concatenate_dataStats(out_mean, out_err, out_bins)
         return out 
 
 # need to move this from here!

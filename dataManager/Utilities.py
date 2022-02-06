@@ -6,7 +6,3 @@ def _get_extension(file):
     path = pathlib.Path(file)
     return path.suffix
 
-def concatenate_stats(mean, err, bins):
-    out = np.array([mean, err])
-    out = np.concatenate([out, bins], axis=0)
-    return out
