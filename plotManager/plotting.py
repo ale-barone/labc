@@ -21,7 +21,7 @@ FIGSIZE  = (10,7)
 LABELS   = {'x' : 't', 'y' : 'y', 'title' : 'Title'}
 
 # INITIALIZATION FOR PLOT 
-def plot_init(*args, **kwargs):
+def init_plot(*args, **kwargs):
     # see https://matplotlib.org/stable/api/_as_gen/matplotlib.pyplot.rc.html
     # see https://matplotlib.org/stable/api/matplotlib_configuration_api.html
     
@@ -42,8 +42,8 @@ def plot_init(*args, **kwargs):
 
     
 # INITIALIZATION FOR AXES
-def axes_init(nrows=1, ncols=1, figsize=FIGSIZE, *args, **kwargs):
-    plot_init()
+def init_axes(nrows=1, ncols=1, figsize=FIGSIZE, *args, **kwargs):
+    init_plot()
     fig, ax = plt.subplots(nrows=nrows, ncols=ncols, figsize=(figsize[0]*ncols , figsize[1]*nrows),  *args, **kwargs)
     fig.tight_layout(pad=5.0)
     # if (not nrows==1) or (not ncols==1):
