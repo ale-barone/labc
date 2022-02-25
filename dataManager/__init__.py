@@ -1,3 +1,4 @@
+from tkinter.messagebox import NO
 import h5py
 import numpy as np
 
@@ -16,19 +17,17 @@ import matplotlib.pyplot as plt
 def concatenate_stats(mean, err, bins):
     num_bins = bins.shape[0]
     T = bins.shape[1] 
-    #assert(len(mean)==len(err)==T)
-    # dtype_ = np.dtype([
-    #     ('mean', 'f8', T),
-    #     ('err', 'f8', T),
-    #     ('bins', 'f8', (num_bins, T))
-    #     ]
-    # )
-    if T==1:
-        dtype_=np.dtype([('mean', 'f8'), ('err', 'f8'), ('bins', 'f8', (num_bins, 1))])
-    else:
-        dtype_=np.dtype([('mean', 'f8', T), ('err', 'f8', T), ('bins', 'f8', (num_bins, T))])
-    out = np.array((mean, err, bins), dtype=dtype_)
+
+    dataStats_type_=np.dtype([
+        ('mean', 'f8', (T,)),
+        ('err', 'f8', (T,)),
+        ('bins', 'f8', (num_bins, T))
+    ])
+    out = np.array((mean, err, bins), dtype=dataStats_type_)
     return out
+
+
+    
     
 
 def merge(*data_in):    
@@ -69,7 +68,7 @@ class dataStats:
         # stats
         self.statsType = statsType
         self.errFun = statsType.errFun
-    
+
 
     # def __repr__(self) -> str:
     #     def get_power(num):
@@ -108,7 +107,11 @@ class dataStats:
     #     print(']')
 
     def T(self):
-        return len(self.mean)
+        if self.mean.ndim==0:
+            out = 1
+        else:
+            out = len(self.mean) 
+        return out
 
     def num_bins(self):
         return len(self.bins)
@@ -175,12 +178,20 @@ class dataStats:
             out_err = self.errFun(out_mean, out_bins)
             
             out = self.concatenate_dataStats(out_mean, out_err, out_bins)
-        elif isinstance(other, (int, float)):
-            out_mean = self.mean * other
-            out_bins = self.bins * other
-            out_err = self.err * other #self.errFun(out_mean, out_bins) #!!
-            
+        elif isinstance(other, (int, float)):   
+            out_mean = other * self.mean
+            out_bins = other * self.bins         
+            out_err = other * self.err  #self.errFun(out_mean, out_bins) #!!
+
             out = self.concatenate_dataStats(out_mean, out_err, out_bins)
+        
+        # FIXME: check better with __array__ufunc__
+        if isinstance(other, np.generic):
+            raise TypeError(
+                "right multiplication with numpy object is buggy. "
+                "Please use standard multiplication (__mul__)."
+            )
+
         return out  
 
     def __truediv__(self, other):
@@ -209,6 +220,17 @@ class dataStats:
             return out 
         else:
             raise NotImplementedError
+    
+    def __radd__(self, other):
+        if isinstance(other, dataStats):
+            out_mean = self.mean + other.mean
+            out_bins = self.bins + other.bins
+            out_err = self.errFun(out_mean, out_bins)
+            
+            out = self.concatenate_dataStats(out_mean, out_err, out_bins)
+            return out 
+        else:
+            raise NotImplementedError
 
     def __sub__(self, other):
         if isinstance(other, dataStats):
@@ -228,20 +250,83 @@ class dataStats:
                 return True
             else:
                 return False
+    # np.array_equal
 
-    # def __array__(self, dtype=None):
-    #     ob = type(self)(self.data, self.statsType)
-    #     return np.asarray([ob])
+    def __array__(self, dtype=None):
+        return None
 
-    def __getitem__(self, key):
-        # I should put this down in an "else" statement
-        out_mean = self.mean[key]
-        out_err = self.err[key]
-        new_size = out_mean.size
-
-        out_bins = np.reshape(self.bins[:,key], (self.num_bins(), new_size))  
+    def __array_ufunc__(self, ufunc, method, *args, **kwargs):
+        # print('ufunc', ufunc)
+        # print('method', method)
+        # print('args', args)
+        # print('kwargs', kwargs)
+        if method=='__call__':
+            arg_np = args[:-1]
+            arg_dataStats = args[-1]
+            out_mean = ufunc(*arg_np, arg_dataStats.mean, **kwargs)
+            out_bins = np.apply_along_axis(
+                lambda b: ufunc(*arg_np, b, **kwargs),
+                1, arg_dataStats.bins
+            )
+            out_err = self.errFun(out_mean, out_bins)
+            out = self.concatenate_dataStats(out_mean, out_err, out_bins)
+            return out
+        else:
+            return NotImplemented
+    
+    def __array_function__(self, func, types, args, kwargs):
+        # print('func', func)
+        # print('types', types)
+        # print('args', args)
+        # print('kwargs', kwargs)
+        arg_dataStats = args[0]
+        arg_np = args[1:]
+        out_mean = func(arg_dataStats.mean, *arg_np, **kwargs)
+        out_bins = np.apply_along_axis(
+            lambda b: func(b, *arg_np, **kwargs),
+            1, arg_dataStats.bins 
+        )
+        out_err = self.errFun(out_mean, out_bins)
         out = self.concatenate_dataStats(out_mean, out_err, out_bins)
         return out
+
+
+    def __getitem__(self, key):
+        if self.mean.ndim==0:
+            if key==0:
+                out_mean = np.array([self.mean])
+                out_err = np.array([self.err])
+                out_bins = self.bins
+                out = self.concatenate_dataStats(out_mean, out_err, out_bins)
+            else:
+                raise ValueError #TODO: raise appropriate error
+        else:
+            out_mean = self.mean[key]
+            out_err = self.err[key]
+            new_size = out_mean.size
+
+            out_bins = np.reshape(self.bins[:,key], (self.num_bins(), new_size))  
+            out = self.concatenate_dataStats(out_mean, out_err, out_bins)
+        return out
+    
+    # FIXME: define a setitem
+    def __setitem__(self, index, data):
+        assert(len(data)==1)
+        out_mean = self.mean
+        out_mean[index] = data.mean
+        out_bins = self.bins
+        for b in range(self.num_bins()):
+            out_bins[b][index] = data.bins[b]
+        # out_bins = np.apply_along_axis(
+        #     lambda b: b[index],
+        #     1, self.bins
+        # )
+        out_err = self.errFun(out_mean, out_bins)
+
+        out = self.concatenate_dataStats(out_mean, out_err, out_bins)
+        return out
+
+
 
 
     def rel_diff(self, other):
@@ -252,6 +337,19 @@ class dataStats:
 
         out = self.concatenate_dataStats(out_mean, out_err, out_bins)
         return out 
+
+def zero(T, statsType):
+    num_bins = statsType.num_bins
+    zero = concatenate_stats(np.zeros(T), np.zeros(T), np.zeros(shape=(num_bins, T)))
+    zero = dataStats(zero, statsType)
+    return zero
+
+def ones(T, statsType):
+    num_bins = statsType.num_bins
+    out = concatenate_stats(np.ones(T), np.zeros(T), np.ones(shape=(num_bins, T)))
+    out = dataStats(out, statsType)
+    return out
+
 
 # need to move this from here!
 class corrStats(dataStats):
