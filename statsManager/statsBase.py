@@ -61,7 +61,7 @@ class statsBase(Istats):
 
 
     def cov2(self, data_x_in, data_y_in, *, num_bins=None, rangefit=None, thin=1):
-        """Compute the covariance of two dataStats objects."""
+        """Compute the covariance matrix of two dataStats objects."""
         
         T = data_x_in.T()
         num_bins = data_x_in.num_bins() if num_bins is None else num_bins
@@ -111,7 +111,23 @@ class statsBase(Istats):
     
     
 
-    def corr(self, *arrays_in):
-        """General correlation matrix possibly for different input arrays."""
-        return NotImplementedError
+    def corr2(self, data_x_in, data_y_in, *, num_bins=None, rangefit=None, thin=1):
+        """Compute the correlation matrix of two dataStats objects."""
+        cov = self.cov2(data_x_in, data_y_in, 
+            num_bins=num_bins, rangefit=rangefit, thin=thin
+        )
+        xmin, xmax = (0, len(data_x_in)) if rangefit is None else (rangefit[0], rangefit[1])
+        err_x = data_x_in.err[xmin:xmax:thin]
+        err_y = data_y_in.err[xmin:xmax:thin]
+        corr = np.diag(1/err_x)@cov@np.diag(1/err_y)
+        return corr
 
+    def corr(self, data_x_in, *, num_bins=None, rangefit=None, thin=1):
+        """
+        Compute the correlation matrix of the time slices of 
+        one dataStats objects.
+        """
+        corr = self.corr2(data_x_in, data_x_in,
+            num_bins=num_bins, rangefit=rangefit, thin=1
+        )
+        return corr
