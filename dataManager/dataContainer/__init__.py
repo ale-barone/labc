@@ -86,7 +86,7 @@ class extractor:
     # not efficient, I call the reader every time in extract_all!
     def extract(self, tsrc, config, path, re):
         ext_reader = reader(self.file_fun(tsrc, config))
-        data = np.roll(np.array(ext_reader.read(path, re=re)), -tsrc)  
+        data = np.roll(np.array(ext_reader.read(path)[re]), -tsrc)  
         return data          
 
     
