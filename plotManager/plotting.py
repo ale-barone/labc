@@ -1,6 +1,6 @@
 
 import numpy as np
-import matplotlib
+import matplotlib as mpl
 import matplotlib.pyplot as plt
 
 import scipy as sci
@@ -17,11 +17,12 @@ import LatticeABC.dataManager as dM
 # =============================================================================
 
 FONTSIZE = {'S' : 16, 'M': 18, 'B': 20, 'BB': 22}
-FIGSIZE  = (10,7)
-LABELS   = {'x' : 't', 'y' : 'y', 'title' : 'Title'}
+FIGSIZE = (10, 7)
+LABELS = {'x' : 't', 'y' : 'y', 'title' : 'Title'}
 
 # INITIALIZATION FOR PLOT 
 def init_plot(*args, **kwargs):
+    #plt.rcParams.update(mpl.rcParamsDefault)
     # see https://matplotlib.org/stable/api/_as_gen/matplotlib.pyplot.rc.html
     # see https://matplotlib.org/stable/api/matplotlib_configuration_api.html
     
@@ -29,14 +30,16 @@ def init_plot(*args, **kwargs):
     plt.rc('axes',   titlesize=FONTSIZE['BB'], labelsize = FONTSIZE['B'])    # fontsize of the axes (created with subplots)
     plt.rc('legend', fontsize=FONTSIZE['S'])    # legend fontsize
 
+    #plt.rc('font', 'comic sans')
     # plt.rc('text', usetex=True)
-    # plt.rcParams['text.latex.preamble']=[r"\usepackage{amsmath}"]
+    #plt.rcParams['text.usetex'] = True 
     
-    #TO DO: find a way to initialize plt.tight_layout() that holds for every plot
+    # TODO: find a way to initialize plt.tight_layout() that holds for every plot
         
-    # plt.rc('font', size=SMALL_SIZE)          # controls default text sizes
+    #plt.rc('font', size=SMALL_SIZE)          # controls default text sizes
     plt.rc('xtick', labelsize=FONTSIZE['S'])    # fontsize of the tick labels
     plt.rc('ytick', labelsize=FONTSIZE['S'])    # fontsize of the tick labels
+
 
 
 
@@ -56,7 +59,6 @@ def init_axes(nrows=1, ncols=1, figsize=FIGSIZE, *args, **kwargs):
 
 # PLOT ON AXES  
 def plot(axes, x, y, *args, xlim=None, **kwargs):
-        
     if xlim is None:
         xmin = 0
         xmax = len(x)
@@ -78,7 +80,7 @@ def plot(axes, x, y, *args, xlim=None, **kwargs):
     return ret
 
     
-def errplot(axes, x, y, *args, xlim=None, yerr = None, **kwargs):
+def errorbar(axes, x, y, *args, xlim=None, **kwargs):
         
     if xlim is None:
         xmin = 0
@@ -88,19 +90,12 @@ def errplot(axes, x, y, *args, xlim=None, yerr = None, **kwargs):
         xmax = xlim[1]
     
     xcut = x[xmin:xmax]
-    
-    if yerr is None and issubclass(type(y), dM.dataStats):
-        ycut = y.mean[xmin:xmax]
-        yerr = y.err[xmin:xmax]
-    else:
-        ycut = y[xmin:xmax]
-        yerr = yerr[xmin:xmax]
-    
-    
-    axes.errorbar(xcut, ycut, yerr = yerr, *args, **kwargs, markersize='10', capsize = 2, elinewidth=0.9)
+    ycut = y[xmin:xmax]
+
+    axes.errorbar(xcut, ycut.mean, yerr=ycut.err, *args, **kwargs, markersize='6', capsize = 2, elinewidth=0.9)
     axes.set_title(LABELS['title'])#fontsize['title'])
     axes.set_xlabel(LABELS['x'])
-    axes.set_ylabel(LABELS['y'])
+    # axes.set_ylabel(LABELS['y'])
 
 
 # =============================================================================
@@ -209,7 +204,6 @@ def fit(x, data_in, fit_function, func_args=None, rangefit=None, thin=1, guess =
             func = fit_function(param, xcut, func_args)
             return np.dot( Cov_inv_sqrt, func - data)    
 
-            
     sol    = leastsq( res, guess, args = (mean_cut),  maxfev=2000, ftol=1e-10, xtol=1e-10, full_output=True)
     chisq  = chi_sq(sol)
 
@@ -217,10 +211,10 @@ def fit(x, data_in, fit_function, func_args=None, rangefit=None, thin=1, guess =
     num_param = len(sol[0])
         
     # bins
-    fit_bins = np.array([])
+    fit_bins = np.empty(shape=(num_bins, len(fit_mean)))
     for k in range(num_bins):
         sol    = leastsq( res, guess, args = (bins_cut[k]), maxfev=2000, ftol=1e-10, xtol=1e-10, full_output=True ) 
-        fit_bins = np.append(fit_bins, sol[0])  
+        fit_bins[k] = sol[0]
         
 
     fit_bins  = np.transpose(np.reshape(fit_bins, (num_bins, len(fit_mean))))
@@ -256,8 +250,8 @@ def fit(x, data_in, fit_function, func_args=None, rangefit=None, thin=1, guess =
             mean_p = np.array([fit_mean[p]])
             err_p = np.array([fit_err[p]])
             bins_p = np.reshape(fit_bins[p], (len(fit_bins[p]), 1) )
-            out_aux = np.array([mean_p, err_p])
-            out_aux = np.concatenate([out_aux, bins_p], axis=0)
+
+            out_aux = dM.concatenate_stats(mean_p, err_p, bins_p)
             out_aux = dM.dataStats(out_aux, data_in.statsType)
             out.append(out_aux)     
     
