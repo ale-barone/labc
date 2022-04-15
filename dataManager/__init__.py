@@ -27,9 +27,6 @@ def concatenate_stats(mean, err, bins):
     return out
 
 
-    
-    
-
 def merge(*data_in):    
     if isinstance(data_in[0], list):
         data_in = tuple(data_in[0])
@@ -66,8 +63,9 @@ class dataStats:
         self.bins = data['bins']
 
         # stats
-        self.statsType = statsType
-        self.errFun = statsType.errFun
+        if not statsType is None:
+            self.statsType = statsType
+            self.errFun = statsType.errFun
 
 
     # def __repr__(self) -> str:
@@ -130,6 +128,7 @@ class dataStats:
 
 
     # TODO: need method to print information nicely
+    
     
     def concatenate_dataStats(self, mean, err, bins):
         out = concatenate_stats(mean, err, bins)
@@ -218,6 +217,13 @@ class dataStats:
             
             out = self.concatenate_dataStats(out_mean, out_err, out_bins)
             return out 
+        elif isinstance(other, np.ndarray):
+            out_mean = self.mean + other
+            out_bins = self.bins + other
+            out_err = self.errFun(out_mean, out_bins)
+
+            out = self.concatenate_dataStats(out_mean, out_err, out_bins)
+            return out
         else:
             raise NotImplementedError
     
@@ -244,12 +250,15 @@ class dataStats:
             raise NotImplementedError
     
     def __eq__(self, other):
+        print('eq')
         if isinstance(other, dataStats):
+            print('boh')
             # add some printing
             if np.allclose(self.mean, other.mean, atol=1e-15) and np.allclose(self.bins, other.bins, atol=1e-15):
                 return True
             else:
                 return False
+            
     # np.array_equal
 
     def __array__(self, dtype=None):
@@ -307,7 +316,7 @@ class dataStats:
 
             out_bins = np.reshape(self.bins[:,key], (self.num_bins(), new_size))  
             out = self.concatenate_dataStats(out_mean, out_err, out_bins)
-        return out
+        return out 
     
     # FIXME: define a setitem
     def __setitem__(self, index, data):
@@ -327,8 +336,6 @@ class dataStats:
         return out
 
 
-
-
     def rel_diff(self, other):
         assert(isinstance(other, dataStats))
         out_mean = np.abs((self.mean - other.mean) / self.mean)
@@ -338,15 +345,39 @@ class dataStats:
         out = self.concatenate_dataStats(out_mean, out_err, out_bins)
         return out 
 
+def dataStats_func(func):
+
+    def wrapper(data_stats):
+        mean = func(data_stats.mean)
+        bins = np.apply_along_axis(
+            lambda b: func(b), 1,
+            data_stats.bins
+        )
+        err = data_stats.statsType.errFun(mean, bins)
+        out = concatenate_stats(mean, err, bins)
+        out = dataStats(out, data_stats.statsType)
+        return out
+    return wrapper
+
 def zero(T, statsType):
     num_bins = statsType.num_bins
-    zero = concatenate_stats(np.zeros(T), np.zeros(T), np.zeros(shape=(num_bins, T)))
+    zero = concatenate_stats(
+        np.zeros(T),
+        np.zeros(T),
+        np.zeros(shape=(num_bins, T))
+    )
     zero = dataStats(zero, statsType)
     return zero
 
 def ones(T, statsType):
     num_bins = statsType.num_bins
     out = concatenate_stats(np.ones(T), np.zeros(T), np.ones(shape=(num_bins, T)))
+    out = dataStats(out, statsType)
+    return out
+
+def empty(T, statsType):
+    num_bins = statsType.num_bins
+    out = concatenate_stats(np.empty(T), np.zeros(T), np.empty(shape=(num_bins, T)))
     out = dataStats(out, statsType)
     return out
 
