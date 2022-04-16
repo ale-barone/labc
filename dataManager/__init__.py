@@ -131,6 +131,7 @@ class dataStats:
     
     
     def concatenate_dataStats(self, mean, err, bins):
+        err = self.errFun(mean, bins)
         out = concatenate_stats(mean, err, bins)
         return dataStats(out, self.statsType)
     
@@ -152,7 +153,7 @@ class dataStats:
         return out
 
     def __len__(self):
-        return self.T()
+        return len(self.mean)
 
     # OVERLOAD OF MATH OPERATIONS
     def __mul__(self, other):
@@ -217,7 +218,7 @@ class dataStats:
             
             out = self.concatenate_dataStats(out_mean, out_err, out_bins)
             return out 
-        elif isinstance(other, np.ndarray):
+        elif isinstance(other, (np.ndarray, int, float)):
             out_mean = self.mean + other
             out_bins = self.bins + other
             out_err = self.errFun(out_mean, out_bins)
@@ -235,6 +236,13 @@ class dataStats:
             
             out = self.concatenate_dataStats(out_mean, out_err, out_bins)
             return out 
+        elif isinstance(other, (np.ndarray, int, float)):
+            out_mean = self.mean + other
+            out_bins = self.bins + other
+            out_err = self.errFun(out_mean, out_bins)
+
+            out = self.concatenate_dataStats(out_mean, out_err, out_bins)
+            return out
         else:
             raise NotImplementedError
 
@@ -245,14 +253,19 @@ class dataStats:
             out_err = self.errFun(out_mean, out_bins)
             
             out = self.concatenate_dataStats(out_mean, out_err, out_bins)
-            return out   
+            return out
+        elif isinstance(other, (np.ndarray, int, float)):
+            out_mean = self.mean - other
+            out_bins = self.bins - other
+            out_err = self.errFun(out_mean, out_bins)
+
+            out = self.concatenate_dataStats(out_mean, out_err, out_bins)
+            return out
         else:
             raise NotImplementedError
     
     def __eq__(self, other):
-        print('eq')
         if isinstance(other, dataStats):
-            print('boh')
             # add some printing
             if np.allclose(self.mean, other.mean, atol=1e-15) and np.allclose(self.bins, other.bins, atol=1e-15):
                 return True
@@ -287,13 +300,33 @@ class dataStats:
         # print('func', func)
         # print('types', types)
         # print('args', args)
-        # print('kwargs', kwargs)
-        arg_dataStats = args[0]
-        arg_np = args[1:]
-        out_mean = func(arg_dataStats.mean, *arg_np, **kwargs)
+        # print('kwargs', kwargs)           
+
+        new_args_mean = []
+        for arg in args:
+            if isinstance(arg, dataStats):
+                arg = arg.mean
+            new_args_mean.append(arg)
+        new_args_mean = tuple(new_args_mean)
+        
+        for arg in args:
+            if isinstance(arg, dataStats):
+                bins = arg.bins
+
+        def arg_bins(bin):
+            new_args_bin = []
+            for arg in args:
+                if isinstance(arg, dataStats):
+                    arg = bin
+                new_args_bin.append(arg)
+            new_args_bin = tuple(new_args_bin)
+            return new_args_bin
+
+        out_mean = func(*new_args_mean, **kwargs)
+        
         out_bins = np.apply_along_axis(
-            lambda b: func(b, *arg_np, **kwargs),
-            1, arg_dataStats.bins 
+            lambda b: func(*arg_bins(b), **kwargs),
+            1, bins
         )
         out_err = self.errFun(out_mean, out_bins)
         out = self.concatenate_dataStats(out_mean, out_err, out_bins)
@@ -345,17 +378,103 @@ class dataStats:
         out = self.concatenate_dataStats(out_mean, out_err, out_bins)
         return out 
 
+# FIXME: it needs to be revisited, at the moment it feels a bit ad hoc
+def func_of_data_stats(func):
+    """Decorator for functions that return functions."""
+
+    def wrapper(*args, **kwargs):
+        # check if there is a DataStats object in args
+        is_data_stats = False
+        for arg in args:
+            if isinstance(arg, dataStats):
+                data_stats = arg
+                num_bins = data_stats.num_bins()
+                is_data_stats = True
+
+        if is_data_stats:
+            # mean
+            args_mean = []
+            for arg in args:
+                if isinstance(arg, dataStats):
+                    arg = arg.mean
+                args_mean.append(arg)
+            args_mean = tuple(args_mean)  
+
+            func_mean = func(*args_mean, **kwargs)
+            
+            # bins
+            def arg_bins(b):
+                args_bin = []
+                for arg in args:
+                    if isinstance(arg, dataStats):
+                        arg = arg.bins[b]
+                    args_bin.append(arg)
+                return tuple(args_bin)
+
+            def func_bins(*args_bins, **kwargs_bins):      
+                out = []
+                for b in range(num_bins):
+                    out.append(func(*arg_bins(b), **kwargs)(*args_bins, **kwargs_bins))
+                return np.asarray(out)
+            
+            # final output function
+            def func_out(*args, **kwargs):
+                mean = func_mean(*args, **kwargs)
+                bins = func_bins(*args, **kwargs)
+
+                err = data_stats.statsType.errFun(mean, bins)
+                out = concatenate_stats(mean, err, bins)
+                out = dataStats(out, data_stats.statsType)
+                return out
+            
+            out = func_out
+        else:
+            out = func(*args, **kwargs)
+        return out  
+    return wrapper
+
+
+
+
 def dataStats_func(func):
 
-    def wrapper(data_stats):
-        mean = func(data_stats.mean)
-        bins = np.apply_along_axis(
-            lambda b: func(b), 1,
-            data_stats.bins
-        )
-        err = data_stats.statsType.errFun(mean, bins)
-        out = concatenate_stats(mean, err, bins)
-        out = dataStats(out, data_stats.statsType)
+    def wrapper(*args, **kwargs):
+        is_data_stats = False
+        for arg in args:
+            if isinstance(arg, dataStats):
+                data_stats = arg
+                num_bins = data_stats.num_bins()
+                is_data_stats = True
+
+        if is_data_stats:
+            args_mean = []
+            for arg in args:
+                if isinstance(arg, dataStats):
+                    arg = arg.mean
+                args_mean.append(arg)
+            args_mean = tuple(args_mean)   
+
+            mean = func(*args_mean, **kwargs)     
+
+            def arg_bins(b):
+                args_bin = []
+                for arg in args:
+                    if isinstance(arg, dataStats):
+                        arg = arg.bins[b]
+                    args_bin.append(arg)
+                return tuple(args_bin)
+
+            bins = []
+            for b in range(num_bins):
+                bins.append(func(*arg_bins(b), **kwargs))
+            bins = np.asarray(bins)
+
+            err = data_stats.statsType.errFun(mean, bins)
+
+            out = concatenate_stats(mean, err, bins)
+            out = dataStats(out, data_stats.statsType)
+        else:
+            out = func(*args, **kwargs)
         return out
     return wrapper
 
