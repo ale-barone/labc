@@ -10,7 +10,8 @@
 import numpy as np
 from LatticeABC import dataManager as _dM
 from LatticeABC.dataManager import dataContainer as _dC
-
+import os
+from os.path import dirname, abspath 
 
 class _AlreadyDefined(Exception):
     """Custom error to avoid overriding global variables."""
@@ -37,6 +38,32 @@ def _print_title(title: str) -> None:
 class database:
     pass
 
+class database_file:
+    pass
+
+class database_eval:
+    pass
+
+class database_func:
+    pass
+
+class database_obj:
+    pass
+
+class databasetmp:
+    
+    def __init__(self, analysis):
+        self.analysis = analysis
+
+
+    def register(self, an_func):
+        self.an_func = an_func
+    
+    
+
+        
+
+
 class analysis:
     """Initializer for the analysis."""
 
@@ -44,10 +71,27 @@ class analysis:
         self.tsrc_list = tsrc_list
         self.config_list = config_list
         self.statsType = statsType
+        
+        # dictionary for global variables of the analysis
         self.globals = {}
-        # self.files = {} # I don't like this solution
+        
+        # database for files (saved data)
+        self.database_file = database_file()
+        self.files = database_file()
+
+        # database for useful function in the analysis
+        # i.e. fits
+        self.database_eval = database_eval()
+        self.eval = database_eval()
+        
+        # database that combines files and useful functions
+        # (and allow me to switch from the 2 with self.onthefly)
         self.database = database()
         self.get = database()
+        # TODO: think about this a bit better
+        self.onthefly = False
+        
+        # database for object that depends on the analysis object
         self.objdatabase = database()
         self.obj = database()
     
@@ -69,7 +113,7 @@ class analysis:
         tsrc_list = self.tsrc_list if tsrc_list is None else tuple(tsrc_list)
         formatter = _dC.formatter(file, self.statsType)
         data = formatter.format(tsrc_list)
-        return _dM.dataStats(data, self.statsType)
+        return _dM.dataStats(*data, self.statsType)
     
     def dataStats_data(self, data: np.ndarray, tsrc_list: list=None) -> _dM.dataStats:
         tsrc_list = self.tsrc_list if tsrc_list is None else tuple(tsrc_list)
@@ -80,11 +124,18 @@ class analysis:
         tsrc_list = self.tsrc_list if tsrc_list is None else tuple(tsrc_list)
         formatter = _dC.formatter(file, self.statsType)
         data = formatter.format(tsrc_list)
-        return _dM.corrStats(data, self.statsType)
+        return _dM.corrStats(*data, self.statsType)
     
+    def set_folder_gauge(self, path):
+        self.folder_gauge = path
+    
+    def set_folder_data(self, path):
+        self.folder_data = path
+
+
     def add_global(self, name: str, value) -> None:
         """Add global variables to the analysis."""
-        if not name in self.globals:
+        if not name in self.globals: # FIXME: is that correct? Or should be over the keys?
             self.globals[name] = value
         else:
             raise _AlreadyDefined(
@@ -103,7 +154,7 @@ class analysis:
                     message = f"Database function '{func}' already defined."
                 )
 
-
+    # TODO: use a common method to add_* and see if I can use try..except instead of if-else+raise
     def add_func(self, an_func):
         """Add functions that retrieves the desired data."""
         if not hasattr(self.database, an_func.__name__):
@@ -119,6 +170,15 @@ class analysis:
         else:
             raise _AlreadyDefined(
                 message = f"Database function '{func}' already defined."
+            )
+    
+    def add_file(self, file):
+        """Add functions that retrieves the desired data."""
+        if not hasattr(self.files, file.__name__):
+            setattr(self.files, file.__name__, file)
+        else:
+            raise _AlreadyDefined(
+                message = f"Database function '{file}' already defined."
             )
     
     def add_obj(self, an_obj):
@@ -138,7 +198,6 @@ class analysis:
                 message = f"Class/obj '{obj}' already defined."
             )
   
-
     def print_globals(self):
         _print_title("GLOBAL VARIABLES")
         for key, value in self.globals.items():

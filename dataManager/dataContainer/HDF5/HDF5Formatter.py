@@ -20,8 +20,8 @@ class HDF5Formatter:
                 all_config_tsrc = np.asarray([np.asarray(hf[f'corr/t{tsrc}/t{tsrc}']) for tsrc in tsrc_list])
                 all_config = np.mean(all_config_tsrc, 0)
                 mean, err, bins = self.statsType.generate_stats(all_config)
-                out = _dM.concatenate_stats(mean, err, bins)
-            return out
+                out = [mean, bins]
+            return tuple(out)
     
     class stats:
         def __init__(self, file, *args):
@@ -35,5 +35,5 @@ class HDF5Formatter:
                 mean = np.asarray(hf['mean/mean'])
                 err = np.asarray(hf['err/err'])
                 bins = np.asarray(hf['bins/bins'])
-                out = _dM.concatenate_stats(mean, err, bins)
-            return out
+                out = [mean, bins] #_dM.concatenate_stats(mean, err, bins)
+            return tuple(out)
