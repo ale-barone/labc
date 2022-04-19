@@ -1,6 +1,7 @@
 from tkinter.messagebox import NO
 import h5py
 import numpy as np
+from numba import jit, njit
 
 from math import log10, floor
 from LatticeABC.dataManager import dataContainer as dC
@@ -148,36 +149,64 @@ class dataStats:
     def __len__(self):
         return len(self.mean)
 
-    # OVERLOAD OF MATH OPERATIONS
-    def __mul__(self, other):
-        if isinstance(other, dataStats):
-            out_mean = self.mean * other.mean
-            out_bins = self.bins * other.bins            
-            out = self.concatenate_dataStats(out_mean, out_bins)
-        else:
-            out_mean = self.mean.__mul__(other)
-            out_bins = self.bins.__mul__(other)            
+
+    # explicit (slow) check for overload of math operations
+    def _check_math(self, other, operation):
+        out_mean = getattr(self.mean, operation)(other)
+        out_bins = np.apply_along_axis(
+            lambda bin: getattr(bin, operation)(other), 1,
+            self.bins
+        )
         out = self.concatenate_dataStats(out_mean, out_bins)
         return out
+
+    # generic overload for mathematical operations among 2 DataStats objects
+    def _overload_math_dataStats(self, other, operation):
+        out_mean = getattr(self.mean, operation)(other.mean)
+        out_bins = getattr(self.bins, operation)(other.bins)
+        out = self.concatenate_dataStats(out_mean, out_bins)
+        return out
+
+    # generic overload for mathematical operations (following numpy)
+    def _overload_math_numpy(self, other, operation):
+        out_mean = getattr(self.mean, operation)(other)
+        out_bins = getattr(self.bins, operation)(other)
+        out = self.concatenate_dataStats(out_mean, out_bins)
+        return out #out_mean, out_bins
+    
+    # math overload
+    def _overload_math(self, other, operation):
+        if isinstance(other, dataStats):
+            out = self._overload_math_dataStats(other, operation)      
+        else:
+            out = self._overload_math_numpy(other, operation) 
+        return out
+
+    # OVERLOAD OF MATH OPERATIONS
+    def __mul__(self, other):
+        return self._overload_math(other, '__mul__')
     
     def __rmul__(self, other):
-        if isinstance(other, dataStats):
-            out_mean = self.mean * other.mean
-            out_bins = self.bins * other.bins            
-            out = self.concatenate_dataStats(out_mean, out_bins)
-        elif isinstance(other, (int, float)):   
-            out_mean = other * self.mean
-            out_bins = other * self.bins         
-            out = self.concatenate_dataStats(out_mean, out_bins)
+        return self._overload_math(other, '__rmul__')
         
-        # FIXME: check better with __array__ufunc__
-        if isinstance(other, np.generic):
-            raise TypeError(
-                "right multiplication with numpy object is buggy. "
-                "Please use standard multiplication (__mul__)."
-            )
+    # def __rmul__(self, other):
+    #     if isinstance(other, dataStats):
+    #         out_mean = self.mean * other.mean
+    #         out_bins = self.bins * other.bins            
+    #         out = self.concatenate_dataStats(out_mean, out_bins)
+    #     elif isinstance(other, (int, float)):   
+    #         out_mean = other * self.mean
+    #         out_bins = other * self.bins         
+    #         out = self.concatenate_dataStats(out_mean, out_bins)
+        
+    #     # FIXME: check better with __array__ufunc__
+    #     if isinstance(other, np.generic):
+    #         raise TypeError(
+    #             "right multiplication with numpy object is buggy. "
+    #             "Please use standard multiplication (__mul__)."
+    #         )
 
-        return out  
+    #     return out  
 
     def __truediv__(self, other):
         if isinstance(other, dataStats):
@@ -189,51 +218,21 @@ class dataStats:
             out_bins = self.bins / other            
             out = self.concatenate_dataStats(out_mean, out_bins)
         return out
-
-
-    def __add__(self, other):
-        if isinstance(other, dataStats):
-            out_mean = self.mean + other.mean
-            out_bins = self.bins + other.bins            
-            out = self.concatenate_dataStats(out_mean, out_bins)
-            return out 
-        elif isinstance(other, (np.ndarray, int, float)):
-            out_mean = self.mean + other
-            out_bins = self.bins + other
-            out = self.concatenate_dataStats(out_mean, out_bins)
-            return out
-        else:
-            raise NotImplementedError
     
+    def __truediv__(self, other):
+        return self._overload_math(other, '__truediv__')
+    
+    def __add__(self, other):
+        return self._overload_math(other, '__add__')
+
     def __radd__(self, other):
-        if isinstance(other, dataStats):
-            out_mean = self.mean + other.mean
-            out_bins = self.bins + other.bins            
-            out = self.concatenate_dataStats(out_mean, out_bins)
-            return out 
-        elif isinstance(other, (np.ndarray, int, float)):
-            out_mean = self.mean + other
-            out_bins = self.bins + other
-            out = self.concatenate_dataStats(out_mean, out_bins)
-            return out
-        else:
-            raise NotImplementedError
+        return self._overload_math(other, '__radd__')
 
     def __sub__(self, other):
-        if isinstance(other, dataStats):
-            out_mean = self.mean - other.mean
-            out_bins = self.bins - other.bins            
-            out = self.concatenate_dataStats(out_mean, out_bins)
-            return out
-        elif isinstance(other, (np.ndarray, int, float)):
-            out_mean = self.mean - other
-            out_bins = self.bins - other
-            out = self.concatenate_dataStats(out_mean, out_bins)
-            return out
-        else:
-            raise NotImplementedError
+        return self._overload_math(other, '__sub__')
     
     def __eq__(self, other):
+        # np.array_equal ?
         if isinstance(other, dataStats):
             # add some printing
             if np.allclose(self.mean, other.mean, atol=1e-15) and np.allclose(self.bins, other.bins, atol=1e-15):
@@ -241,18 +240,44 @@ class dataStats:
             else:
                 return False
             
-    # np.array_equal
 
+    # HOOK ON NUMPY FUNCTIONS -> REDEFINE WHAT HAPPENS WHEN A NUMPY METHOD IS CALLED 
     def __array__(self, dtype=None):
         return None
 
     def __array_ufunc__(self, ufunc, method, *args, **kwargs):
-        # print('ufunc', ufunc)
+        print('ufunc', ufunc)
         # print('method', method)
-        # print('args', args)
+        print('args', args)
         # print('kwargs', kwargs)
-        if method=='__call__':
+        if method=='__call__' and not ufunc.__name__=='multiply':
             # FIXME: fix order of args as in the decorator
+            # args_mean = []
+            # for arg in args:
+            #     if isinstance(arg, dataStats):
+            #         arg = arg.mean
+            #     args_mean.append(arg)
+            # args_mean = tuple(args_mean)
+
+            # for arg in args:
+            #     if isinstance(arg, dataStats):
+            #         bins = arg.bins
+
+            # def arg_bins(bin):
+            #     new_args_bin = []
+            #     for arg in args:
+            #         if isinstance(arg, dataStats):
+            #             arg = bin
+            #         new_args_bin.append(arg)
+            #     new_args_bin = tuple(new_args_bin)
+            #     return new_args_bin
+
+            # out_mean = ufunc(*args_mean, **kwargs)
+            # out_bins = np.apply_along_axis(
+            #     lambda bin: ufunc(*arg_bins(bin), **kwargs),
+            #     1, bins
+            # )
+
             arg_np = args[:-1]
             arg_dataStats = args[-1]
             out_mean = ufunc(*arg_np, arg_dataStats.mean, **kwargs)
@@ -266,6 +291,7 @@ class dataStats:
             return NotImplemented
     
     def __array_function__(self, func, types, args, kwargs):
+        # FIXME: consider case of multiple dataStats/speed up (avoid apply_along)
         # print('func', func)
         # print('types', types)
         # print('args', args)
