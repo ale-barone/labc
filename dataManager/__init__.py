@@ -9,47 +9,6 @@ from .Utilities import _get_extension
 from LatticeABC.dataManager.dataContainer.HDF5.HDF5Utilities import get_statsID
 import matplotlib.pyplot as plt
 
-# TODO: need to decide how I want pass data into dataStats
-# def concatenate_stats(mean, err, bins):
-#     out = np.array([mean, err])
-#     out = np.concatenate([out, bins], axis=0)
-#     return out
-
-# def concatenate_stats(mean, err, bins):
-#     num_bins = bins.shape[0]
-#     T = bins.shape[1] 
-
-#     dataStats_type_=np.dtype([
-#         ('mean', 'f8', (T,)),
-#         ('err', 'f8', (T,)),
-#         ('bins', 'f8', (num_bins, T))
-#     ])
-#     out = np.array((mean, err, bins), dtype=dataStats_type_)
-#     return out
-
-
-def merge(*data_in):    
-    if isinstance(data_in[0], list):
-        data_in = tuple(data_in[0])
-    if isinstance(data_in[0], np.ndarray): 
-        # TODO: implement properly numpy array
-        raise TypeError("np.ndarray not yet implemented.")
-
-    n = len(data_in)
-    statsType = data_in[0].statsType
-    num_bins = data_in[0].num_bins()
-    T = len(data_in[0])
-
-    data_in_mean = np.array([data.mean for data in data_in]).flatten()
-    data_in_bins = np.empty(shape=(num_bins, n*T))
-    for b in range(num_bins):
-        data_in_bins[b] = np.array([data_in.bins[b] for data_in in data_in]).flatten()
-
-    out = dataStats(data_in_mean, data_in_bins, statsType)
-    return out
-
-    
-
 
 # READER WITH STATS CONNOTATION
 class dataStats:    
@@ -110,6 +69,7 @@ class dataStats:
     #         print(print_single(m, e), ',')
     #     print(']')
 
+    # TODO: need method to print information nicely
 
     def num_bins(self):
         return len(self.bins)
@@ -127,23 +87,21 @@ class dataStats:
             raise NotImplementedError(f"File extension '{ext}' not implemented!")
 
 
-    # TODO: need method to print information nicely
     
-    
-    def concatenate_dataStats(self, mean, bins):
+    def _make_dataStats(self, mean, bins):
         return dataStats(mean, bins, self.statsType)
     
     # not sure if these methods (NOT the dunders) should create a new object...
     def push_front(self, other):
         out_mean = np.append([other], self.mean)
         out_bins = np.array([ np.append([other], self.bins[b]) for b in range(self.num_bins()) ])        
-        out = self.concatenate_dataStats(out_mean,  out_bins)
+        out = self._make_dataStats(out_mean, out_bins)
         return out
     
     def roll(self, shift):
         out_mean = np.roll(self.mean, shift)
         out_bins = np.roll(self.bins, shift, axis=1)
-        out = self.concatenate_dataStats(out_mean, out_bins)
+        out = self._make_dataStats(out_mean, out_bins)
         return out
 
     def __len__(self):
@@ -157,21 +115,21 @@ class dataStats:
             lambda bin: getattr(bin, operation)(other), 1,
             self.bins
         )
-        out = self.concatenate_dataStats(out_mean, out_bins)
+        out = self._make_dataStats(out_mean, out_bins)
         return out
 
     # generic overload for mathematical operations among 2 DataStats objects
     def _overload_math_dataStats(self, other, operation):
         out_mean = getattr(self.mean, operation)(other.mean)
         out_bins = getattr(self.bins, operation)(other.bins)
-        out = self.concatenate_dataStats(out_mean, out_bins)
+        out = self._make_dataStats(out_mean, out_bins)
         return out
 
     # generic overload for mathematical operations (following numpy)
     def _overload_math_numpy(self, other, operation):
         out_mean = getattr(self.mean, operation)(other)
         out_bins = getattr(self.bins, operation)(other)
-        out = self.concatenate_dataStats(out_mean, out_bins)
+        out = self._make_dataStats(out_mean, out_bins)
         return out #out_mean, out_bins
     
     # math overload
@@ -188,37 +146,7 @@ class dataStats:
     
     def __rmul__(self, other):
         return self._overload_math(other, '__rmul__')
-        
-    # def __rmul__(self, other):
-    #     if isinstance(other, dataStats):
-    #         out_mean = self.mean * other.mean
-    #         out_bins = self.bins * other.bins            
-    #         out = self.concatenate_dataStats(out_mean, out_bins)
-    #     elif isinstance(other, (int, float)):   
-    #         out_mean = other * self.mean
-    #         out_bins = other * self.bins         
-    #         out = self.concatenate_dataStats(out_mean, out_bins)
-        
-    #     # FIXME: check better with __array__ufunc__
-    #     if isinstance(other, np.generic):
-    #         raise TypeError(
-    #             "right multiplication with numpy object is buggy. "
-    #             "Please use standard multiplication (__mul__)."
-    #         )
-
-    #     return out  
-
-    def __truediv__(self, other):
-        if isinstance(other, dataStats):
-            out_mean = self.mean / other.mean
-            out_bins = self.bins / other.bins 
-            out = self.concatenate_dataStats(out_mean, out_bins)
-        elif isinstance(other, (int, float)):
-            out_mean = self.mean / other
-            out_bins = self.bins / other            
-            out = self.concatenate_dataStats(out_mean, out_bins)
-        return out
-    
+            
     def __truediv__(self, other):
         return self._overload_math(other, '__truediv__')
     
@@ -285,7 +213,7 @@ class dataStats:
                 lambda b: ufunc(*arg_np, b, **kwargs),
                 1, arg_dataStats.bins
             )
-            out = self.concatenate_dataStats(out_mean, out_bins)
+            out = self._make_dataStats(out_mean, out_bins)
             return out
         else:
             return NotImplemented
@@ -323,7 +251,7 @@ class dataStats:
             lambda b: func(*arg_bins(b), **kwargs),
             1, bins
         )
-        out = self.concatenate_dataStats(out_mean, out_bins)
+        out = self._make_dataStats(out_mean, out_bins)
         return out
 
 
@@ -332,7 +260,7 @@ class dataStats:
             if key==0:
                 out_mean = np.array([self.mean])
                 out_bins = self.bins
-                out = self.concatenate_dataStats(out_mean, out_bins)
+                out = self._make_dataStats(out_mean, out_bins)
             else:
                 raise ValueError #TODO: raise appropriate error
         else:
@@ -340,7 +268,7 @@ class dataStats:
             new_size = out_mean.size
 
             out_bins = np.reshape(self.bins[:,key], (self.num_bins(), new_size))  
-            out = self.concatenate_dataStats(out_mean, out_bins)
+            out = self._make_dataStats(out_mean, out_bins)
         return out 
     
     # FIXME: define a setitem
@@ -355,7 +283,7 @@ class dataStats:
         #     lambda b: b[index],
         #     1, self.bins
         # )
-        out = self.concatenate_dataStats(out_mean, out_bins)
+        out = self._make_dataStats(out_mean, out_bins)
         return out
 
 
@@ -363,8 +291,30 @@ class dataStats:
         assert(isinstance(other, dataStats))
         out_mean = np.abs((self.mean - other.mean) / self.mean)
         out_bins = np.abs((self.bins - other.bins) / self.bins)
-        out = self.concatenate_dataStats(out_mean, out_bins)
+        out = self._make_dataStats(out_mean, out_bins)
         return out 
+
+
+def merge(*data_in):    
+    if isinstance(data_in[0], list):
+        data_in = tuple(data_in[0])
+    if isinstance(data_in[0], np.ndarray): 
+        # TODO: implement properly numpy array
+        raise TypeError("np.ndarray not yet implemented.")
+
+    n = len(data_in)
+    statsType = data_in[0].statsType
+    num_bins = data_in[0].num_bins()
+    T = len(data_in[0])
+
+    data_in_mean = np.array([data.mean for data in data_in]).flatten()
+    data_in_bins = np.empty(shape=(num_bins, n*T))
+    for b in range(num_bins):
+        data_in_bins[b] = np.array([data_in.bins[b] for data_in in data_in]).flatten()
+
+    out = dataStats(data_in_mean, data_in_bins, statsType)
+    return out
+
 
 # FIXME: it needs to be revisited, at the moment it feels a bit ad hoc
 def func_of_data_stats(func):
@@ -461,25 +411,25 @@ def dataStats_func(func):
         return out
     return wrapper
 
-def zero(T, statsType):
+def zeros(T, statsType):
     num_bins = statsType.num_bins
     mean = np.zeros(T)
     bins = np.zeros(shape=(num_bins, T))
-    out = dataStats(mean, bins)
+    out = dataStats(mean, bins, statsType)
     return out
 
 def ones(T, statsType):
     num_bins = statsType.num_bins
     mean = np.ones(T)
     bins = np.ones(shape=(num_bins, T))
-    out = dataStats(mean, bins)
+    out = dataStats(mean, bins, statsType)
     return out
 
 def empty(T, statsType):
     num_bins = statsType.num_bins
     mean = np.empty(T)
     bins = np.empty(shape=(num_bins, T))
-    out = dataStats(mean, bins)
+    out = dataStats(mean, bins, statsType)
     return out
 
 
@@ -489,9 +439,8 @@ class corrStats(dataStats):
     def meff(self):
         meff_mean = np.log( self.mean[:-1]/ self.mean[1:] )
         meff_bins = np.log( np.apply_along_axis(lambda x : x[:-1], 1, self.bins ) / np.apply_along_axis(lambda x : x[1:], 1, self.bins ))
-        meff_err = self.errFun(meff_mean, meff_bins)
-        
-        meff_stats = self.concatenate_dataStats(meff_mean, meff_err, meff_bins)
+              
+        meff_stats = self._make_dataStats(meff_mean, meff_bins)
         return meff_stats
         
     
