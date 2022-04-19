@@ -10,6 +10,7 @@ from LatticeABC.dataManager.dataContainer.HDF5.HDF5Utilities import get_statsID
 import matplotlib.pyplot as plt
 
 
+
 # READER WITH STATS CONNOTATION
 class dataStats:    
     """Basic class for data manipulation."""
@@ -17,6 +18,7 @@ class dataStats:
     def __init__(self, mean, bins, statsType):
         self.mean = mean
         self.bins = bins
+        self._data_vectorized = np.concatenate((np.array([mean]), bins), axis=0)
         self._err = None
 
         # stats
@@ -26,11 +28,8 @@ class dataStats:
 
     @property
     def err(self):
-        if self._err is not None:
-            return self._err
-        elif self._err is None:
-            out_err = self.err_func(self.mean, self.bins)
-            self._err = out_err
+        if self._err is None:
+            self._err = self.err_func(self.mean, self.bins)
         return self._err 
 
     # def __repr__(self) -> str:
@@ -91,6 +90,11 @@ class dataStats:
     def _make_dataStats(self, mean, bins):
         return dataStats(mean, bins, self.statsType)
     
+    def _make_dataStats_from_data(self, data):
+        mean = data[0]
+        bins = data[1:]
+        return dataStats(mean, bins, self.statsType)
+
     # not sure if these methods (NOT the dunders) should create a new object...
     def push_front(self, other):
         out_mean = np.append([other], self.mean)
@@ -120,17 +124,15 @@ class dataStats:
 
     # generic overload for mathematical operations among 2 DataStats objects
     def _overload_math_dataStats(self, other, operation):
-        out_mean = getattr(self.mean, operation)(other.mean)
-        out_bins = getattr(self.bins, operation)(other.bins)
-        out = self._make_dataStats(out_mean, out_bins)
+        out_data = getattr(self._data_vectorized, operation)(other._data_vectorized)
+        out = self._make_dataStats_from_data(out_data)
         return out
-
+    
     # generic overload for mathematical operations (following numpy)
     def _overload_math_numpy(self, other, operation):
-        out_mean = getattr(self.mean, operation)(other)
-        out_bins = getattr(self.bins, operation)(other)
-        out = self._make_dataStats(out_mean, out_bins)
-        return out #out_mean, out_bins
+        out_data = getattr(self._data_vectorized, operation)(other)
+        out = self._make_dataStats_from_data(out_data)
+        return out
     
     # math overload
     def _overload_math(self, other, operation):
@@ -166,109 +168,150 @@ class dataStats:
             if np.allclose(self.mean, other.mean, atol=1e-15) and np.allclose(self.bins, other.bins, atol=1e-15):
                 return True
             else:
-                return False
-            
+                return False    
 
     # HOOK ON NUMPY FUNCTIONS -> REDEFINE WHAT HAPPENS WHEN A NUMPY METHOD IS CALLED 
-    def __array__(self, dtype=None):
-        return None
+    # UTILITIES
 
-    def __array_ufunc__(self, ufunc, method, *args, **kwargs):
-        print('ufunc', ufunc)
-        # print('method', method)
-        print('args', args)
-        # print('kwargs', kwargs)
-        if method=='__call__' and not ufunc.__name__=='multiply':
-            # FIXME: fix order of args as in the decorator
-            # args_mean = []
-            # for arg in args:
-            #     if isinstance(arg, dataStats):
-            #         arg = arg.mean
-            #     args_mean.append(arg)
-            # args_mean = tuple(args_mean)
+    @staticmethod
+    def _get_num_bins(args):
+        if not type(args)==tuple:
+            args = list([args])
+        for arg in args:
+            if isinstance(arg, dataStats):
+                num_bins = arg.num_bins()
+        return num_bins
 
-            # for arg in args:
-            #     if isinstance(arg, dataStats):
-            #         bins = arg.bins
+    @staticmethod
+    def _collect_data_args(args):
+        args_mean = []
+        for arg in args:
+            if isinstance(arg, dataStats):
+                arg = arg._data_vectorized
+            args_mean.append(arg)
+        args_mean = tuple(args_mean)
+        return args_mean
 
-            # def arg_bins(bin):
-            #     new_args_bin = []
-            #     for arg in args:
-            #         if isinstance(arg, dataStats):
-            #             arg = bin
-            #         new_args_bin.append(arg)
-            #     new_args_bin = tuple(new_args_bin)
-            #     return new_args_bin
-
-            # out_mean = ufunc(*args_mean, **kwargs)
-            # out_bins = np.apply_along_axis(
-            #     lambda bin: ufunc(*arg_bins(bin), **kwargs),
-            #     1, bins
-            # )
-
-            arg_np = args[:-1]
-            arg_dataStats = args[-1]
-            out_mean = ufunc(*arg_np, arg_dataStats.mean, **kwargs)
-            out_bins = np.apply_along_axis(
-                lambda b: ufunc(*arg_np, b, **kwargs),
-                1, arg_dataStats.bins
-            )
-            out = self._make_dataStats(out_mean, out_bins)
-            return out
-        else:
-            return NotImplemented
-    
-    def __array_function__(self, func, types, args, kwargs):
-        # FIXME: consider case of multiple dataStats/speed up (avoid apply_along)
-        # print('func', func)
-        # print('types', types)
-        # print('args', args)
-        # print('kwargs', kwargs)           
-
-        new_args_mean = []
+    @staticmethod
+    def _collect_mean_args(args):
+        args_mean = []
         for arg in args:
             if isinstance(arg, dataStats):
                 arg = arg.mean
-            new_args_mean.append(arg)
-        new_args_mean = tuple(new_args_mean)
-        
-        for arg in args:
-            if isinstance(arg, dataStats):
-                bins = arg.bins
+            args_mean.append(arg)
+        args_mean = tuple(args_mean)
+        return args_mean
 
-        def arg_bins(bin):
-            new_args_bin = []
+    @staticmethod
+    def _collect_bins_args(args, num_bins):
+        args_bins = []
+        for b in range(num_bins):
+            args_bin = []
             for arg in args:
                 if isinstance(arg, dataStats):
-                    arg = bin
-                new_args_bin.append(arg)
-            new_args_bin = tuple(new_args_bin)
-            return new_args_bin
-
-        out_mean = func(*new_args_mean, **kwargs)
+                    arg = arg.bins[b]
+                args_bin.append(arg)
+            args_bins.append(tuple(args_bin))
         
-        out_bins = np.apply_along_axis(
-            lambda b: func(*arg_bins(b), **kwargs),
-            1, bins
-        )
-        out = self._make_dataStats(out_mean, out_bins)
+        return args_bins
+
+    @staticmethod
+    def _collect_bin_args(args, b):
+        args_bin = []
+        for arg in args:
+            if isinstance(arg, dataStats):
+                arg = arg.bins[b]
+            args_bin.append(arg)
+        args_bin = tuple(args_bin)
+        return args_bin
+    
+    @staticmethod
+    def _collect_mean_kwargs(kwargs):
+        dict_mean = {}
+        for key, value in kwargs.items():
+            if isinstance(value, dataStats):
+                value = value.mean
+            dict_mean[key] = value        
+        return dict_mean
+    
+    # def __array__(self, dtype=object):
+    #     return None
+
+    # FIXME: I don't particularly like this trick, it's a bit fishy...
+    def __array__(self):
+        class Ob:
+            def __init__(self, data):
+                self.data = data
+        out = Ob(self)
+        return np.asarray(out)
+
+    def __array_ufunc__(self, ufunc, method, *args, **kwargs):
+        # print('ufunc', ufunc)
+        # print('method', method)
+        # print('args', args)
+        # print('kwargs', kwargs)
+        if method=='__call__':
+            args_data = self._collect_data_args(args)
+            try:
+                out_data = ufunc(*args_data, axis=1, **kwargs)
+            except TypeError:
+                out_data = ufunc(*args_data, **kwargs)
+            out = self._make_dataStats_from_data(out_data)
+            return out
+        else:
+            return NotImplemented
+
+    def __array_function__(self, func, types, args, kwargs):
+        # print('func', func)
+        # print('types', types)
+        # print('args', args)
+        # print('kwargs', kwargs)       
+
+        # safe and pedantic implementation
+        # args_mean = self._collect_mean_args(args)  
+        # out_mean = func(*args_mean, **kwargs)
+        
+        # num_bins = self._get_num_bins(args)
+        # args_bins = self._collect_bins_args(args, num_bins)  
+        # out_bins = []
+        # for b in range(num_bins):
+        #     out_bins.append(func(*args_bins[b], **kwargs))
+        # out_bins = np.asarray(out_bins)
+        # out = self._make_dataStats(out_mean, out_bins)
+            
+        args_data = self._collect_data_args(args)
+        try:
+            out_data = func(*args_data, axis=1, **kwargs)
+        except TypeError as te:
+            print(te)
+            out_data = func(*args_data, **kwargs)
+        out = self._make_dataStats_from_data(out_data)
         return out
 
 
-    def __getitem__(self, key):
-        if self.mean.ndim==0:
-            if key==0:
-                out_mean = np.array([self.mean])
-                out_bins = self.bins
-                out = self._make_dataStats(out_mean, out_bins)
-            else:
-                raise ValueError #TODO: raise appropriate error
-        else:
-            out_mean = self.mean[key]
-            new_size = out_mean.size
+    # def __getitem__(self, key):
+    #     if self.mean.ndim==0:
+    #         if key==0:
+    #             out_mean = np.array([self.mean])
+    #             out_bins = self.bins
+    #             out = self._make_dataStats(out_mean, out_bins)
+    #         else:
+    #             raise ValueError #TODO: raise appropriate error
+    #     else:
+    #         out_mean = self.mean[key]
+    #         new_size = out_mean.size
 
-            out_bins = np.reshape(self.bins[:,key], (self.num_bins(), new_size))  
-            out = self._make_dataStats(out_mean, out_bins)
+    #         out_bins = np.reshape(self.bins[:,key], (self.num_bins(), new_size))  
+    #         out = self._make_dataStats(out_mean, out_bins)
+    #     return out
+
+    def __getitem__(self, key):
+        out_data = self._data_vectorized[:, key]        
+        out_mean = out_data[0]
+        if not isinstance(out_mean, np.ndarray):
+            out_mean = np.array([out_data[0]])
+        out_bins = np.reshape(out_data[1:], (self.num_bins(), len(out_mean)))
+        out = self._make_dataStats(out_mean, out_bins)
         return out 
     
     # FIXME: define a setitem
@@ -429,6 +472,13 @@ def empty(T, statsType):
     num_bins = statsType.num_bins
     mean = np.empty(T)
     bins = np.empty(shape=(num_bins, T))
+    out = dataStats(mean, bins, statsType)
+    return out
+
+def random(T, statsType):
+    num_bins = statsType.num_bins
+    mean = np.random.normal(0, 1, T)
+    bins = np.random.normal(0, 1, size=(num_bins, T))
     out = dataStats(mean, bins, statsType)
     return out
 
