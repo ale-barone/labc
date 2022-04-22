@@ -1,14 +1,50 @@
 from tkinter.messagebox import NO
-import h5py
 import numpy as np
-from numba import jit, njit
+from math import floor, log10 
 
-from math import log10, floor
 from LatticeABC.dataManager import dataContainer as dC
 from .Utilities import _get_extension
 from LatticeABC.dataManager.dataContainer.HDF5.HDF5Utilities import get_statsID
 import matplotlib.pyplot as plt
 
+
+# print methods
+def _print_dataStats(mean, err, prec):
+    """Print mean and error in the form (mean +- err)e+xx """
+    power_err = floor(log10(np.abs(err)))
+    power_mean = floor(log10(np.abs(mean)))
+    power_rel = power_err-power_mean
+    
+    power_str = f"{10**power_mean:.0e}".replace('1e', 'e')
+    mean_str = f"{mean/10**power_mean: .{prec}f}"
+    
+    if power_rel<-3 or power_rel>0:
+        err_str = f"{err * 10**(-power_mean):.1e}"
+    else:
+        err_str = f"{err * 10**(-power_mean):.{prec}f}"
+    
+    out = f"({mean_str} +- {err_str} ){power_str}"
+    return out
+
+# notation like 3.244(12)
+def _print_dataStats_bis(mean, err, prec):
+    """Print mean and error in the form (mean(err))e+xx"""   
+    power_err = floor(log10(np.abs(err)))
+    power_mean = floor(log10(np.abs(mean)))
+    power_rel = power_err-power_mean
+    
+    power_str = f"{10**power_mean:.0e}".replace('1e', 'e')
+    mean_str = f"{mean/10**power_mean: .{prec}f}"
+
+    if -5<power_rel<0:
+        mean_str = f"{mean/10**power_mean: .{power_mean-power_err+1}f}"
+        err_digits = int(err * 10**(-power_err+1))
+        err_str = f"{err_digits}"
+        out = f"{mean_str}({err_str}){power_str}"     
+    else:
+        err_str = f"{err * 10**(-power_mean): .1e}"
+        out = f"({mean_str} +- {err_str} ){power_str}"
+    return out
 
 
 # READER WITH STATS CONNOTATION
@@ -31,44 +67,32 @@ class dataStats:
         if self._err is None:
             self._err = self.err_func(self.mean, self.bins)
         return self._err 
+    
+    def __repr__(self):
+        prec = 4 # precision
+        space = len('DataStats[')*" "
+        out = f"DataStats["
+        if len(self)>1:
+            out += f"{self.mean[0]: .4e} +- {self.err[0]:.4e},\n" + space
+            for mean, err in zip(self.mean[1:-1], self.err[1:-1]):
+                out += f"{mean: .{prec}e} +- {err:.{prec}e},\n" + space
+        out += f"{self.mean[-1]: .4e} +- {self.err[-1]:.4e}]"      
+        return out
 
-    # def __repr__(self) -> str:
-    #     def get_power(num):
-    #         return floor(log10(num))    
+    def __str__(self):
+        prec = 5 # precision
+        space = len('DataStats[')*" "
+        out = f"DataStats["
+        if len(self)>1:
+            out += _print_dataStats(self.mean[0], self.err[0], prec) + ",\n"
+            for mean, err in zip(self.mean[1:-1], self.err[1:-1]):
+                out += space + _print_dataStats(mean, err, prec) + ",\n"
+            out += space + _print_dataStats(self.mean[-1], self.err[-1], prec) + "]"
+        else:
+            out += _print_dataStats(self.mean[0], self.err[0], prec) + "]" 
+        return out
+        
 
-    #     def count_significantDigits(num):
-    #         double = 15
-    #         power_num = floor(log10(num))
-    #         num_exp = f"{num:.{double}e}"
-    #         print(num_exp)
-    #         digits = str( float(num_exp) / 10**power_num ).replace('.', '')
-    #         return len(digits)
-
-    #     def print_single(mean, err):
-    #         rel_err = err/mean
-    #         power_rel = floor(log10(rel_err))  
-    #         power_err = floor(log10(err))
-            
-    #         if power_rel<-4: 
-    #             out = f'{mean:.4e} +- {err:.4e}' 
-                
-    #         elif power_rel>0:
-    #             out = 'large error!'  
-                
-    #         else:
-    #             precision = np.abs(floor(log10(err))-1)
-    #             err_out = err / (10**(power_err-1))
-    #             if 
-    #             out = f'{mean:.{precision}f}({err_out:.0f})'
-         
-    #         return out
-
-    #     print('[')
-    #     for m, e in zip(self.mean, self.err):
-    #         print(print_single(m, e), ',')
-    #     print(']')
-
-    # TODO: need method to print information nicely
 
     def num_bins(self):
         return len(self.bins)
@@ -399,6 +423,26 @@ def dataStats_args(func):
             bins = np.asarray(bins)
 
             out = dataStats(mean, bins, statsType)
+        else:
+            out = func(*args, **kwargs)
+        return out
+    return wrapper
+
+
+def dataStats_vectorized_args(func):
+    """Decorator to extend a generic function 'func' to allow DataStats
+    arguments with vectorization."""
+
+    def wrapper(*args, **kwargs):
+        is_data_stats = dataStats._has_dataStats(args)
+
+        if is_data_stats:
+            statsType = dataStats._get_statsType(args) 
+
+            args_data = dataStats._collect_data_args(args)
+            data = func(*args_data, **kwargs)    
+
+            out = dataStats(data[0], data[1:], statsType)
         else:
             out = func(*args, **kwargs)
         return out
