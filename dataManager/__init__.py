@@ -174,6 +174,24 @@ class dataStats:
     # UTILITIES
 
     @staticmethod
+    def _has_dataStats(args):
+        # check if there are DataStats object in args
+        out = False
+        for arg in args:
+            if isinstance(arg, dataStats):
+                out = True
+                break
+        return out 
+
+    @staticmethod
+    def _get_statsType(args):
+        for arg in args:
+            if isinstance(arg, dataStats):
+                out = arg.statsType
+                break
+        return out                
+
+    @staticmethod
     def _get_num_bins(args):
         if not type(args)==tuple:
             args = list([args])
@@ -239,10 +257,10 @@ class dataStats:
 
     # FIXME: I don't particularly like this trick, it's a bit fishy...
     def __array__(self):
-        class Ob:
+        class ObjWrapper:
             def __init__(self, data):
                 self.data = data
-        out = Ob(self)
+        out = ObjWrapper(self)
         return np.asarray(out)
 
     def __array_ufunc__(self, ufunc, method, *args, **kwargs):
@@ -282,8 +300,7 @@ class dataStats:
         args_data = self._collect_data_args(args)
         try:
             out_data = func(*args_data, axis=1, **kwargs)
-        except TypeError as te:
-            print(te)
+        except TypeError:
             out_data = func(*args_data, **kwargs)
         out = self._make_dataStats_from_data(out_data)
         return out
@@ -359,43 +376,56 @@ def merge(*data_in):
     return out
 
 
+
+
+def dataStats_args(func):
+    """Decorator to extend a generic function 'func' to allow DataStats
+    arguments."""
+
+    def wrapper(*args, **kwargs):
+        is_data_stats = dataStats._has_dataStats(args)
+
+        if is_data_stats:
+            statsType = dataStats._get_statsType(args) 
+            num_bins = statsType.num_bins
+
+            args_mean = dataStats._collect_mean_args(args)
+            mean = func(*args_mean, **kwargs)    
+
+            args_bins = dataStats._collect_bins_args(args, num_bins)
+            bins = []
+            for b in range(num_bins):
+                bins.append(func(*args_bins[b], **kwargs))
+            bins = np.asarray(bins)
+
+            out = dataStats(mean, bins, statsType)
+        else:
+            out = func(*args, **kwargs)
+        return out
+    return wrapper
+
+
 # FIXME: it needs to be revisited, at the moment it feels a bit ad hoc
-def func_of_data_stats(func):
+def dataStats_func(func):
     """Decorator for functions that return functions."""
 
     def wrapper(*args, **kwargs):
         # check if there is a DataStats object in args
-        is_data_stats = False
-        for arg in args:
-            if isinstance(arg, dataStats):
-                data_stats = arg
-                num_bins = data_stats.num_bins()
-                is_data_stats = True
+        is_data_stats = dataStats._has_dataStats(args)
 
         if is_data_stats:
-            # mean
-            args_mean = []
-            for arg in args:
-                if isinstance(arg, dataStats):
-                    arg = arg.mean
-                args_mean.append(arg)
-            args_mean = tuple(args_mean)  
+            statsType = dataStats._get_statsType(args) 
+            num_bins = statsType.num_bins
 
-            func_mean = func(*args_mean, **kwargs)
-            
-            # bins
-            def arg_bins(b):
-                args_bin = []
-                for arg in args:
-                    if isinstance(arg, dataStats):
-                        arg = arg.bins[b]
-                    args_bin.append(arg)
-                return tuple(args_bin)
+            args_mean = dataStats._collect_mean_args(args)
+            func_mean = func(*args_mean, **kwargs) 
 
-            def func_bins(*args_bins, **kwargs_bins):      
+            args_bins = dataStats._collect_bins_args(args, num_bins)
+            def func_bins(*args_func_bins, **kwargs_func_bins):      
                 out = []
                 for b in range(num_bins):
-                    out.append(func(*arg_bins(b), **kwargs)(*args_bins, **kwargs_bins))
+                    func_bin = func(*args_bins[b], **kwargs)
+                    out.append(func_bin(*args_func_bins, **kwargs_func_bins))
                 return np.asarray(out)
             
             # final output function
@@ -403,7 +433,7 @@ def func_of_data_stats(func):
                 mean = func_mean(*args, **kwargs)
                 bins = func_bins(*args, **kwargs)
 
-                out = dataStats(mean, bins, data_stats.statsType)
+                out = dataStats(mean, bins, statsType)
                 return out
             
             out = func_out
@@ -413,46 +443,6 @@ def func_of_data_stats(func):
     return wrapper
 
 
-
-
-def dataStats_func(func):
-
-    def wrapper(*args, **kwargs):
-        is_data_stats = False
-        for arg in args:
-            if isinstance(arg, dataStats):
-                data_stats = arg
-                num_bins = data_stats.num_bins()
-                is_data_stats = True
-
-        if is_data_stats:
-            args_mean = []
-            for arg in args:
-                if isinstance(arg, dataStats):
-                    arg = arg.mean
-                args_mean.append(arg)
-            args_mean = tuple(args_mean)   
-
-            mean = func(*args_mean, **kwargs)     
-
-            def arg_bins(b):
-                args_bin = []
-                for arg in args:
-                    if isinstance(arg, dataStats):
-                        arg = arg.bins[b]
-                    args_bin.append(arg)
-                return tuple(args_bin)
-
-            bins = []
-            for b in range(num_bins):
-                bins.append(func(*arg_bins(b), **kwargs))
-            bins = np.asarray(bins)
-
-            out = dataStats(mean, bins, data_stats.statsType)
-        else:
-            out = func(*args, **kwargs)
-        return out
-    return wrapper
 
 def zeros(T, statsType):
     num_bins = statsType.num_bins
