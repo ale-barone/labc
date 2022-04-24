@@ -182,7 +182,7 @@ def fit(x, data_in, fit_function, func_args=None, rangefit=None, thin=1, guess =
     xmax = rangefit[1]
 
     statsType = data_in.statsType
-    errFun = data_in.errFun
+    err_func = data_in.err_func
     
     xcut    = x[xmin:xmax:thin]
     mean_cut = data_in.mean[xmin:xmax:thin] #array_in_mean, cutf, cutb, thin)
@@ -221,7 +221,7 @@ def fit(x, data_in, fit_function, func_args=None, rangefit=None, thin=1, guess =
     
     fit_err = np.array([])
     for p in range(num_param):
-        fit_err_aux = errFun(fit_mean[p], fit_bins[p]) 
+        fit_err_aux = err_func(fit_mean[p], fit_bins[p]) 
         fit_err     = np.append(fit_err, fit_err_aux)
         
 
@@ -240,19 +240,18 @@ def fit(x, data_in, fit_function, func_args=None, rangefit=None, thin=1, guess =
     out = []
     if num_param==1:        
         mean_p = np.array([fit_mean[p]])
-        err_p = np.array([fit_err[p]])
+        #err_p = np.array([fit_err[p]])
         bins_p = np.reshape(fit_bins[p], (len(fit_bins[p]), 1) )
-        out = np.array([mean_p, err_p])
-        out = np.concatenate([out, bins_p], axis=0)
-        return dM.dataStats(out, data_in.statsType)
+        # out = np.array([mean_p, err_p])
+        # out = np.concatenate([out, bins_p], axis=0)
+        out = dM.dataStats(mean_p, bins_p, data_in.statsType)
     else:
         for p in range(num_param):
             mean_p = np.array([fit_mean[p]])
-            err_p = np.array([fit_err[p]])
+            #err_p = np.array([fit_err[p]])
             bins_p = np.reshape(fit_bins[p], (len(fit_bins[p]), 1) )
 
-            out_aux = dM.concatenate_stats(mean_p, err_p, bins_p)
-            out_aux = dM.dataStats(out_aux, data_in.statsType)
+            out_aux = dM.dataStats(mean_p, bins_p, data_in.statsType)
             out.append(out_aux)     
     
     return out

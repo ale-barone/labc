@@ -63,7 +63,7 @@ class statsBase(Istats):
     def cov2(self, data_x_in, data_y_in, *, num_bins=None, rangefit=None, thin=1):
         """Compute the covariance matrix of two dataStats objects."""
         
-        T = data_x_in.T()
+        T = len(data_x_in)
         num_bins = data_x_in.num_bins() if num_bins is None else num_bins
         xmin, xmax = (0, T) if rangefit is None else (rangefit[0], rangefit[1])
         
