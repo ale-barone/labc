@@ -60,7 +60,7 @@ class dataStats:
         # stats
         if statsType is not None:
             self.statsType = statsType
-            self.err_func = statsType.errFun
+            self.err_func = statsType.err_func
 
     @property
     def err(self):

@@ -10,7 +10,7 @@ class Istats(ABC):
         """It generates resampled bins from raw data."""
 
     @abstractmethod
-    def errFun(self, array_bins_in):
+    def err_func(self, array_bins_in):
         """It computes the error from resampled bins."""
 
     @abstractmethod
@@ -45,7 +45,7 @@ class statsBase(Istats):
     def generate_bins(self, array_raw_in):
         pass
 
-    def errFun(self, array_mean_in, array_bins_in):
+    def err_func(self, array_mean_in, array_bins_in):
         # error 
         diff = array_bins_in - array_mean_in
         diff2 = diff**2
@@ -56,7 +56,7 @@ class statsBase(Istats):
     def generate_stats(self, array_raw_in):
         mean = np.mean(array_raw_in, 0)
         bins = self.generate_bins(array_raw_in)
-        err = self.errFun(mean, bins)  
+        err = self.err_func(mean, bins)  
         return mean, err, bins
 
 
