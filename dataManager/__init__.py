@@ -11,8 +11,8 @@ import matplotlib.pyplot as plt
 # print methods
 def _print_dataStats(mean, err, prec):
     """Print mean and error in the form (mean +- err)e+xx """
-    power_err = floor(log10(np.abs(err)))
-    power_mean = floor(log10(np.abs(mean)))
+    power_err = floor(log10(np.abs(err))) if not err==0 else 0 
+    power_mean = floor(log10(np.abs(mean))) if not mean==0 else 0
     power_rel = power_err-power_mean
     
     power_str = f"{10**power_mean:.0e}".replace('1e', 'e')
@@ -29,8 +29,8 @@ def _print_dataStats(mean, err, prec):
 # notation like 3.244(12)
 def _print_dataStats_bis(mean, err, prec):
     """Print mean and error in the form (mean(err))e+xx"""   
-    power_err = floor(log10(np.abs(err)))
-    power_mean = floor(log10(np.abs(mean)))
+    power_err = floor(log10(np.abs(err))) if not err==0 else 0 
+    power_mean = floor(log10(np.abs(mean))) if not mean==0 else 0
     power_rel = power_err-power_mean
     
     power_str = f"{10**power_mean:.0e}".replace('1e', 'e')
