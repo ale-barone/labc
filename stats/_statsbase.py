@@ -1,6 +1,7 @@
 import numpy as np 
 from abc import ABC, abstractmethod
-from LatticeABC import dataManager as dM
+from .. import data as dM
+
 
 class Istats(ABC):
     """Base class for managing statistics."""
@@ -26,7 +27,7 @@ class Istats(ABC):
         """General correlation matrix possibly for different input arrays."""
 
 
-class statsBase(Istats):
+class StatsBase(Istats):
     
     def __init__(self, num_config, num_bins, seed=None):
         self.num_config = num_config
@@ -36,11 +37,16 @@ class statsBase(Istats):
         self.ID = None
     
     def __str__(self):
-        out = f"statsType = '{self.ID}':" \
-              f"\n -num_config = {self.num_config}" \
-              f"\n -num_bins = {self.num_bins}" \
-              f"\n -seed = {self.seed}"
+        out = (
+            f"StatsType = '{self.ID}':" 
+            f"\n -num_config = {self.num_config}"
+            f"\n -num_bins = {self.num_bins}"
+            f"\n -seed = {self.seed}"
+        )
         return out
+    
+    def __repr__(self):
+        return self.__str__()
 
     def generate_bins(self, array_raw_in):
         pass
@@ -58,7 +64,6 @@ class statsBase(Istats):
         bins = self.generate_bins(array_raw_in)
         err = self.err_func(mean, bins)  
         return mean, err, bins
-
 
     def cov2(self, data_x_in, data_y_in, *, num_bins=None, rangefit=None, thin=1):
         """Compute the covariance matrix of two dataStats objects."""
@@ -85,31 +90,12 @@ class statsBase(Istats):
         return cov
 
     def cov(self, data_x_in, *, num_bins=None, rangefit=None, thin=1):
-        return self.cov2(data_x_in, data_x_in, num_bins=num_bins, rangefit=rangefit, thin=1)
+        return self.cov2(data_x_in, data_x_in, num_bins=num_bins, rangefit=rangefit, thin=thin)
 
     def cov_blocks(self, *data_in, num_bins=None, rangefit=None, thin=1):
         """General covariance matrix possibly for different input arrays."""
         data_in_merged = dM.merge(*data_in)
-        return self.cov(data_in_merged, num_bins=num_bins, rangefit=rangefit, thin=thin)
-
-    # OLD
-    # def cov_blocks(self, data_array_in, num_bins=None, rangefit=None, thin=1):
-    #     """General covariance matrix possibly for different input arrays."""
-    #     data_array_in = tuple(data_array_in)
-        
-    #     n = len(data_array_in) * data_array_in[0].T()
-    #     cov = np.array([])
-    #     for data_x_in in data_array_in:
-    #         cov_block_row = self.cov2(data_x_in, data_array_in[0],  num_bins=num_bins, rangefit=rangefit, thin=thin)
-    #         for data_y_in in data_array_in[1:]:
-    #             cov_block = self.cov2(data_x_in, data_y_in,  num_bins=num_bins, rangefit=rangefit, thin=thin) 
-    #             cov_block_row = np.append(cov_block_row, cov_block, axis=1)
-                
-    #         cov = np.append(cov, cov_block_row)
-    #     cov = np.reshape(cov, (n,n))
-    #     return cov
-    
-    
+        return self.cov(data_in_merged, num_bins=num_bins, rangefit=rangefit, thin=thin)    
 
     def corr2(self, data_x_in, data_y_in, *, num_bins=None, rangefit=None, thin=1):
         """Compute the correlation matrix of two dataStats objects."""
@@ -128,6 +114,6 @@ class statsBase(Istats):
         one dataStats objects.
         """
         corr = self.corr2(data_x_in, data_x_in,
-            num_bins=num_bins, rangefit=rangefit, thin=1
+            num_bins=num_bins, rangefit=rangefit, thin=thin
         )
         return corr
