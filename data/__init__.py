@@ -1,11 +1,7 @@
-from tkinter.messagebox import NO
 import numpy as np
 from math import floor, log10 
-
-from LatticeABC.dataManager import dataContainer as dC
-from .Utilities import _get_extension
-from LatticeABC.dataManager.dataContainer.HDF5.HDF5Utilities import get_statsID
-import matplotlib.pyplot as plt
+from .container import Writer as _Writer
+from .utilities import _get_extension
 
 
 # print methods
@@ -48,24 +44,27 @@ def _print_dataStats_bis(mean, err, prec):
 
 
 # READER WITH STATS CONNOTATION
-class dataStats:    
+class DataStats:    
     """Basic class for data manipulation."""
 
     def __init__(self, mean, bins, statsType):
+        # make sure we always deal with numpy array
+        if not isinstance(mean, np.ndarray):
+            mean = np.array([mean])
+            bins = np.reshape(bins, (len(bins), len(mean)))
+
         self.mean = mean
         self.bins = bins
         self._data_vectorized = np.concatenate((np.array([mean]), bins), axis=0)
         self._err = None
 
         # stats
-        if statsType is not None:
-            self.statsType = statsType
-            self.err_func = statsType.err_func
+        self.statsType = statsType
 
     @property
     def err(self):
         if self._err is None:
-            self._err = self.err_func(self.mean, self.bins)
+            self._err = self.statsType.err_func(self.mean, self.bins)
         return self._err 
     
     def __repr__(self):
@@ -92,32 +91,29 @@ class dataStats:
             out += _print_dataStats(self.mean[0], self.err[0], prec) + "]" 
         return out
         
-
-
     def num_bins(self):
         return len(self.bins)
 
     # TODO: change this into a more efficient factory
-    def save(self, file_out):
+    def save(self, file_out, group=None, *args, **kwargs):
         ext = _get_extension(file_out)
         if ext=='.h5':
-            writer = dC.writer(file_out, 'stats')
-            writer.init_groupStructure(self.statsType)
-            writer.add_mean(self.mean)
-            writer.add_err(self.err)
-            writer.add_bins(self.bins)
+            writer = _Writer(file_out, 'stats')
+            writer.add_stats_group(self.statsType, group)
+            writer.add_mean(group, self.mean, *args, **kwargs)
+            writer.add_err(group, self.err, *args, **kwargs)
+            writer.add_bins(group, self.bins, *args, **kwargs)
         else:
             raise NotImplementedError(f"File extension '{ext}' not implemented!")
 
-
     
     def _make_dataStats(self, mean, bins):
-        return dataStats(mean, bins, self.statsType)
+        return DataStats(mean, bins, self.statsType)
     
     def _make_dataStats_from_data(self, data):
         mean = data[0]
         bins = data[1:]
-        return dataStats(mean, bins, self.statsType)
+        return DataStats(mean, bins, self.statsType)
 
     # not sure if these methods (NOT the dunders) should create a new object...
     def push_front(self, other):
@@ -160,7 +156,7 @@ class dataStats:
     
     # math overload
     def _overload_math(self, other, operation):
-        if isinstance(other, dataStats):
+        if isinstance(other, DataStats):
             out = self._overload_math_dataStats(other, operation)      
         else:
             out = self._overload_math_numpy(other, operation) 
@@ -187,9 +183,10 @@ class dataStats:
     
     def __eq__(self, other):
         # np.array_equal ?
-        if isinstance(other, dataStats):
+        if isinstance(other, DataStats):
             # add some printing
-            if np.allclose(self.mean, other.mean, atol=1e-15) and np.allclose(self.bins, other.bins, atol=1e-15):
+            if np.allclose(self.mean, other.mean, atol=1e-15) \
+               and np.allclose(self.bins, other.bins, atol=1e-15):
                 return True
             else:
                 return False    
@@ -202,7 +199,7 @@ class dataStats:
         # check if there are DataStats object in args
         out = False
         for arg in args:
-            if isinstance(arg, dataStats):
+            if isinstance(arg, DataStats):
                 out = True
                 break
         return out 
@@ -210,7 +207,7 @@ class dataStats:
     @staticmethod
     def _get_statsType(args):
         for arg in args:
-            if isinstance(arg, dataStats):
+            if isinstance(arg, DataStats):
                 out = arg.statsType
                 break
         return out                
@@ -220,25 +217,25 @@ class dataStats:
         if not type(args)==tuple:
             args = list([args])
         for arg in args:
-            if isinstance(arg, dataStats):
+            if isinstance(arg, DataStats):
                 num_bins = arg.num_bins()
         return num_bins
 
     @staticmethod
     def _collect_data_args(args):
-        args_mean = []
+        args_data = []
         for arg in args:
-            if isinstance(arg, dataStats):
+            if isinstance(arg, DataStats):
                 arg = arg._data_vectorized
-            args_mean.append(arg)
-        args_mean = tuple(args_mean)
-        return args_mean
+            args_data.append(arg)
+        args_data = tuple(args_data)
+        return args_data
 
     @staticmethod
     def _collect_mean_args(args):
         args_mean = []
         for arg in args:
-            if isinstance(arg, dataStats):
+            if isinstance(arg, DataStats):
                 arg = arg.mean
             args_mean.append(arg)
         args_mean = tuple(args_mean)
@@ -250,7 +247,7 @@ class dataStats:
         for b in range(num_bins):
             args_bin = []
             for arg in args:
-                if isinstance(arg, dataStats):
+                if isinstance(arg, DataStats):
                     arg = arg.bins[b]
                 args_bin.append(arg)
             args_bins.append(tuple(args_bin))
@@ -261,7 +258,7 @@ class dataStats:
     def _collect_bin_args(args, b):
         args_bin = []
         for arg in args:
-            if isinstance(arg, dataStats):
+            if isinstance(arg, DataStats):
                 arg = arg.bins[b]
             args_bin.append(arg)
         args_bin = tuple(args_bin)
@@ -271,7 +268,7 @@ class dataStats:
     def _collect_mean_kwargs(kwargs):
         dict_mean = {}
         for key, value in kwargs.items():
-            if isinstance(value, dataStats):
+            if isinstance(value, DataStats):
                 value = value.mean
             dict_mean[key] = value        
         return dict_mean
@@ -329,30 +326,9 @@ class dataStats:
         out = self._make_dataStats_from_data(out_data)
         return out
 
-
-    # def __getitem__(self, key):
-    #     if self.mean.ndim==0:
-    #         if key==0:
-    #             out_mean = np.array([self.mean])
-    #             out_bins = self.bins
-    #             out = self._make_dataStats(out_mean, out_bins)
-    #         else:
-    #             raise ValueError #TODO: raise appropriate error
-    #     else:
-    #         out_mean = self.mean[key]
-    #         new_size = out_mean.size
-
-    #         out_bins = np.reshape(self.bins[:,key], (self.num_bins(), new_size))  
-    #         out = self._make_dataStats(out_mean, out_bins)
-    #     return out
-
     def __getitem__(self, key):
         out_data = self._data_vectorized[:, key]        
-        out_mean = out_data[0]
-        if not isinstance(out_mean, np.ndarray):
-            out_mean = np.array([out_data[0]])
-        out_bins = np.reshape(out_data[1:], (self.num_bins(), len(out_mean)))
-        out = self._make_dataStats(out_mean, out_bins)
+        out = self._make_dataStats(out_data[0], out_data[1:])
         return out 
     
     # FIXME: define a setitem
@@ -372,7 +348,7 @@ class dataStats:
 
 
     def rel_diff(self, other):
-        assert(isinstance(other, dataStats))
+        assert(isinstance(other, DataStats))
         out_mean = np.abs((self.mean - other.mean) / self.mean)
         out_bins = np.abs((self.bins - other.bins) / self.bins)
         out = self._make_dataStats(out_mean, out_bins)
@@ -396,7 +372,7 @@ def merge(*data_in):
     for b in range(num_bins):
         data_in_bins[b] = np.array([data_in.bins[b] for data_in in data_in]).flatten()
 
-    out = dataStats(data_in_mean, data_in_bins, statsType)
+    out = DataStats(data_in_mean, data_in_bins, statsType)
     return out
 
 
@@ -407,22 +383,22 @@ def dataStats_args(func):
     arguments."""
 
     def wrapper(*args, **kwargs):
-        is_data_stats = dataStats._has_dataStats(args)
+        is_data_stats = DataStats._has_dataStats(args)
 
         if is_data_stats:
-            statsType = dataStats._get_statsType(args) 
+            statsType = DataStats._get_statsType(args) 
             num_bins = statsType.num_bins
 
-            args_mean = dataStats._collect_mean_args(args)
+            args_mean = DataStats._collect_mean_args(args)
             mean = func(*args_mean, **kwargs)    
 
-            args_bins = dataStats._collect_bins_args(args, num_bins)
+            args_bins = DataStats._collect_bins_args(args, num_bins)
             bins = []
             for b in range(num_bins):
                 bins.append(func(*args_bins[b], **kwargs))
             bins = np.asarray(bins)
 
-            out = dataStats(mean, bins, statsType)
+            out = DataStats(mean, bins, statsType)
         else:
             out = func(*args, **kwargs)
         return out
@@ -434,15 +410,15 @@ def dataStats_vectorized_args(func):
     arguments with vectorization."""
 
     def wrapper(*args, **kwargs):
-        is_data_stats = dataStats._has_dataStats(args)
+        is_data_stats = DataStats._has_dataStats(args)
 
         if is_data_stats:
-            statsType = dataStats._get_statsType(args) 
+            statsType = DataStats._get_statsType(args) 
 
-            args_data = dataStats._collect_data_args(args)
+            args_data = DataStats._collect_data_args(args)
             data = func(*args_data, **kwargs)    
 
-            out = dataStats(data[0], data[1:], statsType)
+            out = DataStats(data[0], data[1:], statsType)
         else:
             out = func(*args, **kwargs)
         return out
@@ -455,16 +431,16 @@ def dataStats_func(func):
 
     def wrapper(*args, **kwargs):
         # check if there is a DataStats object in args
-        is_data_stats = dataStats._has_dataStats(args)
+        is_data_stats = DataStats._has_dataStats(args)
 
         if is_data_stats:
-            statsType = dataStats._get_statsType(args) 
+            statsType = DataStats._get_statsType(args) 
             num_bins = statsType.num_bins
 
-            args_mean = dataStats._collect_mean_args(args)
+            args_mean = DataStats._collect_mean_args(args)
             func_mean = func(*args_mean, **kwargs) 
 
-            args_bins = dataStats._collect_bins_args(args, num_bins)
+            args_bins = DataStats._collect_bins_args(args, num_bins)
             def func_bins(*args_func_bins, **kwargs_func_bins):      
                 out = []
                 for b in range(num_bins):
@@ -477,7 +453,7 @@ def dataStats_func(func):
                 mean = func_mean(*args, **kwargs)
                 bins = func_bins(*args, **kwargs)
 
-                out = dataStats(mean, bins, statsType)
+                out = DataStats(mean, bins, statsType)
                 return out
             
             out = func_out
@@ -492,52 +468,26 @@ def zeros(T, statsType):
     num_bins = statsType.num_bins
     mean = np.zeros(T)
     bins = np.zeros(shape=(num_bins, T))
-    out = dataStats(mean, bins, statsType)
+    out = DataStats(mean, bins, statsType)
     return out
 
 def ones(T, statsType):
     num_bins = statsType.num_bins
     mean = np.ones(T)
     bins = np.ones(shape=(num_bins, T))
-    out = dataStats(mean, bins, statsType)
+    out = DataStats(mean, bins, statsType)
     return out
 
 def empty(T, statsType):
     num_bins = statsType.num_bins
     mean = np.empty(T)
     bins = np.empty(shape=(num_bins, T))
-    out = dataStats(mean, bins, statsType)
+    out = DataStats(mean, bins, statsType)
     return out
 
 def random(T, statsType):
     num_bins = statsType.num_bins
     mean = np.random.normal(0, 1, T)
     bins = np.random.normal(0, 1, size=(num_bins, T))
-    out = dataStats(mean, bins, statsType)
+    out = DataStats(mean, bins, statsType)
     return out
-
-
-# need to move this from here!
-class corrStats(dataStats):
-
-    def meff(self):
-        meff_mean = np.log( self.mean[:-1]/ self.mean[1:] )
-        meff_bins = np.log( np.apply_along_axis(lambda x : x[:-1], 1, self.bins ) / np.apply_along_axis(lambda x : x[1:], 1, self.bins ))
-              
-        meff_stats = self._make_dataStats(meff_mean, meff_bins)
-        return meff_stats
-        
-    
-    def plot_meff(self, xmin, xmax, shift=0, err=True, *args, **kwargs):
-        x = np.arange(xmin, xmax)
-        y = self.meff().mean[xmin:xmax]
-        
-        if err == False:
-            y_err = None
-        elif err == True:
-            y_err = self.meff().err[xmin:xmax]
-            
-        plt.errorbar(x + shift, y, yerr = y_err, *args, **kwargs)
-        plt.xlabel(r'$t$', fontsize = 14)
-        plt.ylabel(r'$m_{eff}$', fontsize=14)
-        plt.title(r'$\log ( \, C(t) \, / \, C(t+1) \, )$', fontsize = 14)

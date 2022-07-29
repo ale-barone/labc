@@ -25,9 +25,9 @@ class IReader(ABC):
 class IWriter(ABC):
     """Common interface for a writer. It defines the property/methods that every writer must have by definition."""
     
-    def __init__(self, file, statsID):
+    def __init__(self, file, fileID):
         self.file = file 
-        self.statsID = statsID 
+        self.fileID = fileID 
         self._create_file()
 
     @abstractmethod
@@ -37,4 +37,3 @@ class IWriter(ABC):
     @abstractmethod
     def write(self, path, data):
         """Basic writing operation of data into location path."""
-

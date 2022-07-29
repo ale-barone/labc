@@ -2,6 +2,7 @@ import h5py
 import numpy as np
 import os
 
+
 def get_groups(h5file):
     groups = []
     with h5py.File(h5file, 'r') as hf:
@@ -26,7 +27,8 @@ def get_paths(h5file):
     out = np.append(groups, datasets)
     return out
 
-# TODO: the following are probably more general functions.. I may consider defining then generally and specialize them
+# TODO: the following are probably more general functions.. I may consider
+# defining them generally and specialize them
 # for every file format
 
 class NonStatsIDFileError(Exception):
@@ -37,38 +39,36 @@ class NonStatsIDFileError(Exception):
         super().__init__(message)
 
 
-# def get_statsID(h5file):
+# def get_fileID(h5file):
 #     with h5py.File(h5file, 'r') as hf:
 #         try:
-#             statsID = hf.attrs['statsID']
-#             return statsID
+#             fileID = hf.attrs['fileID']
+#             return fileID
 #         except:
 #             raise NonStatsIDFileError(
 #                 file=h5file,
-#                 message=f"File '{h5file}' has no attribute 'statsID'."
+#                 message=f"File '{h5file}' has no attribute 'fileID'."
 #             )
 
-def has_statsID(h5file):
+def has_fileID(h5file):
     with h5py.File(h5file, 'r') as hf:
-        statsID_bool = 'statsID' in hf.attrs
-        return statsID_bool
+        fileID_bool = 'fileID' in hf.attrs
+        return fileID_bool
 
-def get_statsID(h5file):
-    if has_statsID(h5file):
+def get_fileID(h5file):
+    if has_fileID(h5file):
         with h5py.File(h5file, 'r') as hf:
-            statsID = hf.attrs['statsID']            
+            fileID = hf.attrs['fileID']            
     else:
-        statsID = 'generic'
-    return statsID
+        fileID = 'generic'
+    return fileID
 
-def check_statsID(h5file):
+def check_fileID(h5file):
     if os.path.isfile(h5file):
-        if not has_statsID(h5file):
+        if not has_fileID(h5file):
             raise NonStatsIDFileError(
                 file=h5file,
-                message=f"File '{h5file}' has no attribute 'statsID'."
+                message=f"File '{h5file}' has no attribute 'fileID'."
             )
     else:
         return True
-     
-    

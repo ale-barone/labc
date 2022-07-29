@@ -1,9 +1,9 @@
-import numpy as np
-from .HDF5.HDF5Reader import HDF5Reader
-from .HDF5.HDF5Writer import HDF5Writer
-from .HDF5.HDF5Formatter import HDF5Formatter
-from .HDF5.HDF5Utilities import check_statsID, get_statsID
-from .objectFactory import objectFactory
+from ._objectFactory import ObjectFactory as _ObjectFactory
+from .HDF5.reader import Reader as _HDF5Reader
+from .HDF5.writer import Writer as _HDF5Writer
+from .HDF5.formatter import Formatter as _HDF5Formatter
+from .HDF5.utilities import check_fileID, get_fileID
+
 
 # I THINK IT WOULD MAKE MORE SENSE TO HAVE THIS ALL FILE INTO THE __init__.py of 'dataManager'
 
@@ -11,55 +11,65 @@ from .objectFactory import objectFactory
 
 # class fileStatsID:
     
-#     def __init__(self, file, statsID):
+#     def __init__(self, file, fileID):
 #         self.file = file
-#         self.statsID = statsID
+#         self.fileID = fileID
 #         self.reader = reader(file)
-#         self.writer = writer(file, statsID)
+#         self.writer = writer(file, fileID)
 
-reader_factory = objectFactory()
-reader_factory.add_obj('.h5', HDF5Reader)
+################################################################################
+# READER
+################################################################################
 
-# final object to be called: it deals with files, whereas readerFactory deals directly only with readers (doesn't really know anything about files)
-class reader:
+_reader_factory = _ObjectFactory()
+_reader_factory.add_obj('.h5', _HDF5Reader)
+
+# final object to be called: it deals with files, whereas readerFactory deals 
+# directly only with readers (doesn't really know anything about files)
+class Reader:
     """
-    Class which take as input the file, read its 'statsID' ('gauge' or 'stats', 'generic' if None) and calls the appropriate
-    reader with the help of a reader factory.
+    Class which take as input the file, read its 'fileID' ('gauge' or 'stats', 
+    'generic' if None) and calls the appropriate reader with the help of a 
+    reader factory.
     """
 
     def __new__(cls,  file): # TODO: in principle I should get the file ID from the attribute! (if there is no attribute then I go with 'generic')
-        statsID = get_statsID(file)
-        reader = reader_factory.get_obj(file, statsID)
+        fileID = get_fileID(file)
+        reader = _reader_factory.get_obj(file, fileID)
         cls.reader = reader
         return reader(file)
 
-    # this need some extra thinkg
-    # @classmethod
-    # def add_reader(cls, ext, reader):
-    #     cls.factory.add_reader(ext, reader)
-    #     #return __class__.factory
 
+################################################################################
+# WRITER
+################################################################################
 
-writer_factory = objectFactory()
-writer_factory.add_obj('.h5', HDF5Writer)
+_writer_factory = _ObjectFactory()
+_writer_factory.add_obj('.h5', _HDF5Writer)
 
-class writer:
+class Writer:
     """
-    Class which take as input the file and its 'ID' (typically 'generic', 'gauge' or 'stats') and calls the appropriate
-    writer with the help of a writer factory.
+    Class which take as input the file and its 'ID' (typically 'generic',
+    'gauge' or 'stats') and calls the appropriate writer with the help of a
+    writer factory.
     """
 
-    def __new__(cls, file, statsID): # TODO: in principle I should get the file ID from the attribute! (if there is no attribute then I go with 'generic')
-        writer = writer_factory.get_obj(file, statsID)
+    def __new__(cls, file, fileID): # TODO: in principle I should get the file ID from the attribute! (if there is no attribute then I go with 'generic')
+        writer = _writer_factory.get_obj(file, fileID)
         cls.writer = writer
-        return writer(file, statsID)
+        return writer(file, fileID)
 
-formatter_factory = objectFactory()
-formatter_factory.add_obj('.h5', HDF5Formatter)
 
-class formatter:
+################################################################################
+# FORMATTER
+################################################################################
+
+_formatter_factory = _ObjectFactory()
+_formatter_factory.add_obj('.h5', _HDF5Formatter)
+
+class Formatter:
     """
-    Class which take an input file with 'statsID'={'gauge', 'stats'}
+    Class which take an input file with 'fileID'={'gauge', 'stats'}
     and format the data in a numpy array 'data' such that
     data[0]: mean
     data[1]: err
@@ -67,38 +77,38 @@ class formatter:
     """
 
     def __new__(cls, file, statsType):
-        check_statsID(file)
-        statsID = get_statsID(file)
-        formatter = formatter_factory.get_obj(file, statsID)
+        check_fileID(file)
+        fileID = get_fileID(file)
+        formatter = _formatter_factory.get_obj(file, fileID)
         cls.reader = formatter
         return formatter(file, statsType)
 
 
 
-# TODO: write this thing more in general! This is NOT acceptable!
-class extractor:
+# # TODO: write this thing more in general! This is NOT acceptable!
+# class extractor:
     
-    def __init__(self, file_fun, *args):
-        def _file_fun(tsrc, config):
-            return file_fun(tsrc, config, *args)
-        self.file_fun = _file_fun
+#     def __init__(self, file_fun, *args):
+#         def _file_fun(tsrc, config):
+#             return file_fun(tsrc, config, *args)
+#         self.file_fun = _file_fun
 
-    # not efficient, I call the reader every time in extract_all!
-    def extract(self, tsrc, config, path, re):
-        ext_reader = reader(self.file_fun(tsrc, config))
-        data = np.roll(np.array(ext_reader.read(path)[re]), -tsrc)  
-        return data          
+#     # not efficient, I call the reader every time in extract_all!
+#     def extract(self, tsrc, config, path, re):
+#         ext_reader = reader(self.file_fun(tsrc, config))
+#         data = np.roll(np.array(ext_reader.read(path)[re]), -tsrc)  
+#         return data          
 
     
-    def extract_all(self, tsrc_list, config_list, path, re):
-        data = np.array([])
-        for tsrc in tsrc_list:
-            for config in config_list:
-                data_single = self.extract(tsrc, config, path, re)
-                data = np.append(data, data_single)
+#     def extract_all(self, tsrc_list, config_list, path, re):
+#         data = np.array([])
+#         for tsrc in tsrc_list:
+#             for config in config_list:
+#                 data_single = self.extract(tsrc, config, path, re)
+#                 data = np.append(data, data_single)
                 
-        num_sources = len(tsrc_list)
-        num_config = len(config_list)
-        num_tslices = int(len(data) / (num_sources*num_config))
-        data = np.reshape(data, (num_sources, num_config, num_tslices))
-        return data
+#         num_sources = len(tsrc_list)
+#         num_config = len(config_list)
+#         num_tslices = int(len(data) / (num_sources*num_config))
+#         data = np.reshape(data, (num_sources, num_config, num_tslices))
+#         return data
