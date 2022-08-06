@@ -172,7 +172,7 @@ class Writer:
             with h5py.File(self.file, 'r+') as hf:
                 for group in groups:
                     hf.create_group(group, track_order=track_order)
-                    self.set_attr(group, ('statsType', statsType.__str__()))
+                    self.set_attr(group, ('StatsType', statsType.__repr__()))
 
         def add_mean(self, group, array_mean, *args, **kwargs):
             with h5py.File(self.file, 'r+') as hf:
@@ -188,3 +188,11 @@ class Writer:
             with h5py.File(self.file, 'r+') as hf:
                 G = hf[group]
                 G.create_dataset('bins', *args, data=array_bins, **kwargs)
+        
+        def add_dataStats(self, group, dataStats, *args, **kwargs):
+            with h5py.File(self.file, 'r+') as hf:
+                G = hf[group]
+                G.create_dataset('mean', *args, data=dataStats.mean, **kwargs)
+                G.create_dataset('err', *args, data=dataStats.err, **kwargs)
+                G.create_dataset('bins', *args, data=dataStats.bins, **kwargs)
+
