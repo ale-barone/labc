@@ -1,6 +1,7 @@
 import numpy as np 
 from abc import ABC, abstractmethod
 from .. import data as dM
+from scipy.linalg import block_diag
 
 
 class Istats(ABC):
@@ -46,7 +47,13 @@ class StatsBase(Istats):
         return out
     
     def __repr__(self):
-        return self.__str__()
+        out = (
+            f"StatsType.{self.ID}(" 
+            f"num_config={self.num_config}, "
+            f"num_bins={self.num_bins}, "
+            f"seed={self.seed})"
+        )
+        return out
 
     def generate_bins(self, array_raw_in):
         pass
@@ -95,7 +102,15 @@ class StatsBase(Istats):
     def cov_blocks(self, *data_in, num_bins=None, rangefit=None, thin=1):
         """General covariance matrix possibly for different input arrays."""
         data_in_merged = dM.merge(*data_in)
-        return self.cov(data_in_merged, num_bins=num_bins, rangefit=rangefit, thin=thin)    
+        return self.cov(data_in_merged, num_bins=num_bins, rangefit=rangefit, thin=thin)
+
+    def cov_blocks_diag(self, *data_in, num_bins=None, rangefit=None, thin=1):
+        """Block diagonal covariance matrix"""
+        cov_list = []
+        for data in data_in:
+            cov_list.append(self.cov(data))
+        return block_diag(*cov_list)
+
 
     def corr2(self, data_x_in, data_y_in, *, num_bins=None, rangefit=None, thin=1):
         """Compute the correlation matrix of two dataStats objects."""
