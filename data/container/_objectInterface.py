@@ -3,7 +3,8 @@ from abc import ABC, abstractmethod
 # I may want to inlude here a shared structure for the different formats
 
 class IReader(ABC):
-    """Common interface for a reader. It defines the property/methods that every reader must have by definition."""
+    """Common interface for a reader. It defines the property/methods that
+    every reader must have by definition."""
     
     def __init__(self, file):
         self.file = file 
@@ -23,7 +24,8 @@ class IReader(ABC):
 
 
 class IWriter(ABC):
-    """Common interface for a writer. It defines the property/methods that every writer must have by definition."""
+    """Common interface for a writer. It defines the property/methods
+    that every writer must have by definition."""
     
     def __init__(self, file, fileID):
         self.file = file 
@@ -37,3 +39,15 @@ class IWriter(ABC):
     @abstractmethod
     def write(self, path, data):
         """Basic writing operation of data into location path."""
+
+
+class IFormatter(ABC):
+    """Common interface for a formatter. It defines the property/methods that
+    every reader must have by definition."""
+    
+    def __init__(self, file):
+        self.file = file 
+        
+    @abstractmethod
+    def format(self):
+        """Basic fromatting operation of a specific section."""
