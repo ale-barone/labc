@@ -1,7 +1,7 @@
 import h5py
 import numpy as np
 import os
-
+from labc.Utilities import timer
 
 def get_groups(h5file):
     groups = []
@@ -22,10 +22,20 @@ def get_datasets(h5file):
     return datasets
 
 def get_paths(h5file):
-    groups = get_groups(h5file)
-    datasets = get_datasets(h5file)
-    out = np.append(groups, datasets)
-    return out
+    # groups = get_groups(h5file)
+    # datasets = get_datasets(h5file)
+    groups = []
+    datasets = []
+    with h5py.File(h5file, 'r') as hf:
+        def append_path(name, obj):
+            if isinstance(obj, h5py._hl.group.Group):
+                groups.append(name) 
+            elif isinstance(obj, h5py._hl.dataset.Dataset):
+                datasets.append(name)
+        hf.visititems(append_path)
+    #out = np.append(groups, datasets)
+    #out = list([*groups, *datasets])
+    return [*groups, *datasets]
 
 # TODO: the following are probably more general functions.. I may consider
 # defining them generally and specialize them
@@ -56,11 +66,13 @@ def has_fileID(h5file):
         return fileID_bool
 
 def get_fileID(h5file):
-    if has_fileID(h5file):
-        with h5py.File(h5file, 'r') as hf:
+    # if has_fileID(h5file):
+    #     with h5py.File(h5file, 'r') as hf:
+    with h5py.File(h5file, 'r') as hf:
+        if 'fileID' in hf.attrs:
             fileID = hf.attrs['fileID']            
-    else:
-        fileID = 'generic'
+        else:
+            fileID = 'generic'
     return fileID
 
 def check_fileID(h5file):

@@ -3,6 +3,7 @@ from .HDF5.reader import Reader as _HDF5Reader
 from .HDF5.writer import Writer as _HDF5Writer
 from .HDF5.formatter import Formatter as _HDF5Formatter
 from .HDF5.utilities import check_fileID, get_fileID
+from LatticeABC.Utilities import timer
 
 
 # I THINK IT WOULD MAKE MORE SENSE TO HAVE THIS ALL FILE INTO THE __init__.py of 'dataManager'
@@ -37,7 +38,10 @@ class Reader:
         fileID = get_fileID(file)
         reader = _reader_factory.get_obj(file, fileID)
         cls.reader = reader
-        return reader(file)
+        # build reader
+        out_reader = reader(file)
+        out_reader.fileID = fileID
+        return out_reader
 
 
 ################################################################################
@@ -53,8 +57,8 @@ class Writer:
     'gauge' or 'stats') and calls the appropriate writer with the help of a
     writer factory.
     """
-
-    def __new__(cls, file, fileID): # TODO: in principle I should get the file ID from the attribute! (if there is no attribute then I go with 'generic')
+    
+    def __new__(cls, file, fileID):
         writer = _writer_factory.get_obj(file, fileID)
         cls.writer = writer
         return writer(file, fileID)
@@ -75,7 +79,6 @@ class Formatter:
     data[1]: err
     data[2:]: bins
     """
-
     def __new__(cls, file, statsType):
         check_fileID(file)
         fileID = get_fileID(file)
