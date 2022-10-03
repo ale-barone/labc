@@ -13,6 +13,8 @@ class StatsBoot(StatsBase):
     def generate_bins(self, array_raw_in):
         """It generates resampled bins from raw data using bootstrap."""
         num_config = np.size(array_raw_in, 0)
+        assert(num_config==self.num_config),\
+            "num_bins of the object does not agree with StatsType.Boot"
         
         np.random.seed(self.seed)
         bins = np.random.randint(0, num_config, size=(num_config, self.num_bins)).transpose() 
