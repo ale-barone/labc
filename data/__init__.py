@@ -49,13 +49,13 @@ class DataStats:
 
     def __init__(self, mean, bins, statsType):
         # make sure we always deal with numpy array
-        if not isinstance(mean, np.ndarray):
+        if not isinstance(mean, (np.ndarray, list)):
             mean = np.array([mean])
             bins = np.reshape(bins, (len(bins), len(mean)))
 
-        self.mean = mean
-        self.bins = bins
         self._data_vectorized = np.concatenate((np.array([mean]), bins), axis=0)
+        self.mean = self._data_vectorized[0]
+        self.bins = self._data_vectorized[1:]
         self._err = None
 
         # stats
@@ -95,7 +95,7 @@ class DataStats:
         return len(self.bins)
 
     # TODO: change this into a more efficient factory
-    def save(self, file_out, group=None, *args, **kwargs):
+    def save(self, file_out, group, *args, **kwargs):
         ext = _get_extension(file_out)
         if ext=='.h5':
             writer = _Writer(file_out, 'stats')
@@ -172,6 +172,9 @@ class DataStats:
     def __truediv__(self, other):
         return self._overload_math(other, '__truediv__')
     
+    def __rtruediv__(self, other):
+        return self._overload_math(other, '__rtruediv__')
+    
     def __add__(self, other):
         return self._overload_math(other, '__add__')
 
@@ -180,6 +183,18 @@ class DataStats:
 
     def __sub__(self, other):
         return self._overload_math(other, '__sub__')
+
+    def __rsub__(self, other):
+        return self._overload_math(other, '__rsub__')
+
+    def __pow__(self, other):
+        return self._overload_math(other, '__pow__')
+
+    def __neg__(self):
+        return -1*self
+    
+    def __pos__(self):
+        return +1*self
     
     def __eq__(self, other):
         # np.array_equal ?
@@ -327,25 +342,15 @@ class DataStats:
         return out
 
     def __getitem__(self, key):
-        out_data = self._data_vectorized[:, key]        
+        out_data = self._data_vectorized[:, key]      
         out = self._make_dataStats(out_data[0], out_data[1:])
         return out 
     
-    # FIXME: define a setitem
     def __setitem__(self, index, data):
-        assert(len(data)==1)
-        out_mean = self.mean
-        out_mean[index] = data.mean
-        out_bins = self.bins
-        for b in range(self.num_bins()):
-            out_bins[b][index] = data.bins[b]
-        # out_bins = np.apply_along_axis(
-        #     lambda b: b[index],
-        #     1, self.bins
-        # )
-        out = self._make_dataStats(out_mean, out_bins)
-        return out
+        self._data_vectorized[:, index] = data._data_vectorized.flatten()
 
+    def rel_err(self):
+        return np.abs(self.err/self.mean)
 
     def rel_diff(self, other):
         assert(isinstance(other, DataStats))
@@ -354,29 +359,57 @@ class DataStats:
         out = self._make_dataStats(out_mean, out_bins)
         return out 
 
+################################################################################
+# UTILITIES
+################################################################################
 
-def merge(*data_in):    
+def merge(*data_in):
     if isinstance(data_in[0], list):
         data_in = tuple(data_in[0])
-    if isinstance(data_in[0], np.ndarray): 
-        # TODO: implement properly numpy array
-        raise TypeError("np.ndarray not yet implemented.")
-
-    n = len(data_in)
     statsType = data_in[0].statsType
-    num_bins = data_in[0].num_bins()
-    T = len(data_in[0])
 
-    data_in_mean = np.array([data.mean for data in data_in]).flatten()
-    data_in_bins = np.empty(shape=(num_bins, n*T))
-    for b in range(num_bins):
-        data_in_bins[b] = np.array([data_in.bins[b] for data_in in data_in]).flatten()
-
-    out = DataStats(data_in_mean, data_in_bins, statsType)
+    data_vectorized = np.concatenate([data._data_vectorized for data in data_in], axis=1)
+    out = DataStats(data_vectorized[0], data_vectorized[1:], statsType)
     return out
 
+def zeros(T, statsType):
+    num_bins = statsType.num_bins
+    mean = np.zeros(T)
+    bins = np.zeros(shape=(num_bins, T))
+    out = DataStats(mean, bins, statsType)
+    return out
 
+def ones(T, statsType):
+    num_bins = statsType.num_bins
+    mean = np.ones(T)
+    bins = np.ones(shape=(num_bins, T))
+    out = DataStats(mean, bins, statsType)
+    return out
 
+def empty(T, statsType):
+    num_bins = statsType.num_bins
+    mean = np.empty(T)
+    bins = np.empty(shape=(num_bins, T))
+    out = DataStats(mean, bins, statsType)
+    return out
+
+def random(T, statsType):
+    num_bins = statsType.num_bins
+    mean = np.random.normal(0, 1, T)
+    bins = np.random.normal(0, 1, size=(num_bins, T))
+    out = DataStats(mean, bins, statsType)
+    return out
+
+def uniform(T, statsType, low=0.0, high=1.0):   
+    num_bins = statsType.num_bins
+    bins = np.random.uniform(low=low, high=high, size=(num_bins, T))
+    mean = np.mean(bins, 0)
+    out = DataStats(mean, bins, statsType)
+    return out
+
+################################################################################
+# DECORATORS
+################################################################################
 
 def dataStats_args(func):
     """Decorator to extend a generic function 'func' to allow DataStats
@@ -461,33 +494,3 @@ def dataStats_func(func):
             out = func(*args, **kwargs)
         return out  
     return wrapper
-
-
-
-def zeros(T, statsType):
-    num_bins = statsType.num_bins
-    mean = np.zeros(T)
-    bins = np.zeros(shape=(num_bins, T))
-    out = DataStats(mean, bins, statsType)
-    return out
-
-def ones(T, statsType):
-    num_bins = statsType.num_bins
-    mean = np.ones(T)
-    bins = np.ones(shape=(num_bins, T))
-    out = DataStats(mean, bins, statsType)
-    return out
-
-def empty(T, statsType):
-    num_bins = statsType.num_bins
-    mean = np.empty(T)
-    bins = np.empty(shape=(num_bins, T))
-    out = DataStats(mean, bins, statsType)
-    return out
-
-def random(T, statsType):
-    num_bins = statsType.num_bins
-    mean = np.random.normal(0, 1, T)
-    bins = np.random.normal(0, 1, size=(num_bins, T))
-    out = DataStats(mean, bins, statsType)
-    return out
