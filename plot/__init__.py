@@ -33,12 +33,12 @@ def init_plot(*args, **kwargs):
 
     # plt.rcParams.update({
     #     "text.usetex": True,
-    #     "font.family": "Helvetica",
+    #     "font.family": ["Helvetica"],
     #     #"font.sans-serif": ["Helvetica"]
     # })
     # plt.rcParams.update({
     #     "text.usetex": True,
-    #     "font.family": "serif",
+    #     "font.family": "Serif",
     #     "font.serif": ["Palatino"],
     # })
     
@@ -64,7 +64,8 @@ def plot(*args, axis=None, scalex=True, scaley=True, data=None, **kwargs):
         new_args.append(arg)
     if axis is None:
         axis = plt
-    axis.plot(*new_args, scalex=scalex, scaley=scaley, data=data, **kwargs)
+    out = axis.plot(*new_args, scalex=scalex, scaley=scaley, data=data, **kwargs)
+    return out
 
    
 def errorbar(
@@ -82,20 +83,22 @@ def errorbar(
     if axis is None:
         axis = plt      
 
-    axis.errorbar(
+    out = axis.errorbar(
         x, y, yerr=yerr, xerr=xerr, fmt=fmt, ecolor=ecolor,
         elinewidth=elinewidth, capsize=capsize, barsabove=barsabove, lolims=lolims,
         uplims=uplims, xlolims=xlolims, xuplims=xuplims, errorevery=errorevery,
         capthick=capthick, data=data, **kwargs
     )
+    return out
 
 
 class _MyAxes(Axes):
 
     def __init__(self, ax):
-        # copy attributes
-        self.__dict__ = ax.__dict__.copy()
-        self.ax = ax
+        # copy attributes FIXME I don't know how to efficiently copy and make
+        # all the attributes work properly (see for example workaround on legend..)
+        self.__dict__ = ax.__dict__
+        self.ax = ax 
 
     def plot(self, *args, scalex=True, scaley=True, data=None, **kwargs):
         out = plot(
@@ -116,8 +119,7 @@ class _MyAxes(Axes):
             uplims=uplims, xlolims=xlolims, xuplims=xuplims, errorevery=errorevery,
             capthick=capthick, data=data, **kwargs
         )
-        return out
-            
+        return out   
     
 # INITIALIZATION FOR AXES
 def init_axes(nrows=1, ncols=1, figsize=FIGSIZE, *args, **kwargs):
