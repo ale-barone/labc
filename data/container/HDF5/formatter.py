@@ -13,6 +13,16 @@ class Formatter:
             self.file = file
             self.statsType = statsType
             self.fileID = get_fileID(file)
+
+        def extract_raw(self, group, tsrc_list):
+            with h5py.File(self.file, 'r') as hf:
+                all_config_tsrc = np.asarray(
+                    [np.asarray(hf[f'{group}/tsrc{tsrc}']) 
+                    for tsrc in tsrc_list]
+                )
+                # shape is (tsrc, config, T)
+                all_config = np.mean(all_config_tsrc, 0)
+            return all_config
         
         def format(self, group, tsrc_list): # TODO: add config_list
             with h5py.File(self.file, 'r') as hf:
