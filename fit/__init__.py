@@ -99,7 +99,7 @@ def fit(x, data_in, fit_function, func_args=None, rangefit=None, thin=1, guess =
     
     if correlated == True:
         cov = statsType.cov(data_in, num_bins=num_bins, rangefit=rangefit, thin=1)
-        Cov_inv_sqrt = cholesky(cov)
+        Cov_inv_sqrt = cholesky(np.linalg.inv(cov))
     elif correlated == False:
         Cov_inv_sqrt = np.diag( 1 / data_in.err[xmin:xmax:thin] )
 
@@ -152,7 +152,7 @@ def fit(x, data_in, fit_function, func_args=None, rangefit=None, thin=1, guess =
         bins_p = np.reshape(fit_bins[p], (len(fit_bins[p]), 1) )
         # out = np.array([mean_p, err_p])
         # out = np.concatenate([out, bins_p], axis=0)
-        out = dM.dataStats(mean_p, bins_p, data_in.statsType)
+        out = DataStats(mean_p, bins_p, data_in.statsType)
     else:
         for p in range(num_param):
             mean_p = np.array([fit_mean[p]])
@@ -165,31 +165,32 @@ def fit(x, data_in, fit_function, func_args=None, rangefit=None, thin=1, guess =
     return out
 
 
+def fit_cosh(param, t, T):
+    Thalf = T/2
+    return 2*param['A'] * np.exp(-param['E']*Thalf) * np.cosh(param['E']*( Thalf - t)) 
+
+
 class Fitter:
 
-    def __init__(self, x, data_in, rangefit=None, thin=1, correlated=True):
-        self.rangefit = rangefit
-        self.thin = thin
-        xmin = rangefit[0]
-        xmax = rangefit[1]
-        xcut = x[xmin:xmax:thin]
-
-        self.x = xcut
-        self.data_in = data_in[xmin:xmax:thin]
-
-        self.statsType = data_in.statsType
-        self.rangefit = rangefit
+    def __init__(self, range_fit, data_in, correlated=True):
+        self.range_fit = range_fit
+        self.data_in = data_in[range_fit]
         self.correlated = correlated
 
+        self.statsType = data_in.statsType
         self.cov_inv_sqrt = self._cov_inv_sqrt()
     
     def _cov_inv_sqrt(self):
         if self.correlated==True:
             cov = self.statsType.cov(self.data_in)
-            out = cholesky(cov)
+            out = cholesky(np.linalg.inv(cov))
         elif self.correlated==False:
-            out = np.diag( 1 / self.data_in.err )
+            out = np.diag(1/self.data_in.err)
         return out
+    
+    # def make_fit_func(self, func, *args, **kwargs):
+    #     def internal_func(param):
+    #         return func(param, *args, **kwargs)
 
     def assign_fit_func(self, ID, *args):
         if ID=='cosh':
@@ -203,12 +204,14 @@ class Fitter:
             return np.dot(self.cov_inv_sqrt, func - self.data_in.mean)   
         return func
 
-    def eval(self):  
+    def eval_mean(self, guess):  
         res = self._residual()
-        sol = leastsq(res, [0.001, 3], maxfev=2000, ftol=1e-10, xtol=1e-10, full_output=True)
+        sol = leastsq(res, guess, maxfev=2000, ftol=1e-10, xtol=1e-10, full_output=True)
         chisq = chi_sq(sol)
+        return sol
+    
 
-        print(sol)
+
 
 
 
