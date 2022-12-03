@@ -1,7 +1,6 @@
 import h5py
 import numpy as np
 import os
-from labc.Utilities import timer
 
 def get_groups(h5file):
     groups = []

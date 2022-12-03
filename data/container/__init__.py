@@ -3,7 +3,6 @@ from .HDF5.reader import Reader as _HDF5Reader
 from .HDF5.writer import Writer as _HDF5Writer
 from .HDF5.formatter import Formatter as _HDF5Formatter
 from .HDF5.utilities import check_fileID, get_fileID
-from LatticeABC.Utilities import timer
 
 
 # I THINK IT WOULD MAKE MORE SENSE TO HAVE THIS ALL FILE INTO THE __init__.py of 'dataManager'
