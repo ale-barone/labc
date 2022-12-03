@@ -3,3 +3,4 @@ test
 functions.py
 mymodule.py
 .spyproject
+docs/build
