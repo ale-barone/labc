@@ -1,6 +1,5 @@
 import numpy as np
 from functools import wraps
-from LatticeABC import data as _dM
 from ..data import container as _dC
 
 
