@@ -407,6 +407,14 @@ def uniform(T, statsType, low=0.0, high=1.0):
     out = DataStats(mean, bins, statsType)
     return out
 
+def Z2(T, statsType):   
+    num_bins = statsType.num_bins
+    bins = np.random.randint(low=-1, high=1, size=(num_bins, T))
+    bins = np.where(bins<0, bins, +1)
+    mean = np.mean(bins, 0)
+    out = DataStats(mean, bins, statsType)
+    return out
+
 ################################################################################
 # DECORATORS
 ################################################################################
