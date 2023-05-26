@@ -178,7 +178,7 @@ class Fitter:
          
     def _residual(self, x, y, cov_inv_sqrt):
         def func(param):
-            func = self.fit_func(param,x)
+            func = self.fit_func(param, x)
             return np.dot(cov_inv_sqrt, func-y)   
         return func
 
@@ -269,7 +269,8 @@ class Fitter:
         data = data.sort_values('pvalue', ascending=False)
         return data
     
-    def full_scan(self, fit_range: list, guess: list, *, correlated, min_num_points=None, max_num_points=None, thin=1):
+    def full_scan(self, fit_range: list, guess: dict, *, correlated,
+                  min_num_points=None, max_num_points=None, thin=1):
         if min_num_points is None:
             min_num_points = len(self.param)+1
         elif min_num_points<=len(self.param):
