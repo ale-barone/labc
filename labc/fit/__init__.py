@@ -4,6 +4,9 @@ import scipy.optimize as opt
 from scipy.optimize import leastsq
 from scipy.linalg import cholesky
 import pandas as pd
+from .. import data as dM
+from  ..data import constant as dMconstant
+from  ..data import zeros as dMzeros
 from ..data import DataStats, dataStats_args
 from ..data import merge as dm_merge
 from . import functions as lib
@@ -50,7 +53,7 @@ def fit(x, data_in, fit_function, *func_args, rangefit=None, thin=1, guess=[1, 1
     num_points = len(xcut)
     
     if correlated == True:
-        cov = statsType.cov(data_in, num_bins=num_bins, rangefit=rangefit, thin=1)
+        cov = statsType.cov(data_in, num_bins=num_bins, rangefit=rangefit, thin=thin)
         cov_inv_sqrt = cholesky(np.linalg.inv(cov))
     elif correlated == False:
         cov_inv_sqrt = np.diag( 1 / data_in.err[xmin:xmax:thin] )
@@ -141,9 +144,18 @@ class Fitter:
             def func(param, x):
                 return libfunc()(param, x, *fit_func_args)
             self._fit_func = func
-
         else:
             self._fit_func = None
+        
+
+        # initialize null priors
+        def null_prior(*args):
+            return 0
+        null_prior_data = dMzeros(1, self.statsType)
+        
+        self.prior = {v: null_prior for v in self.param.values()}
+        self.prior_resampling = None
+        self.prior_data = {v: null_prior_data for v in self.param.values()}
 
         # print('\n_________________________________________')
         # print('| --- Initialise fitter for function ')
@@ -158,6 +170,26 @@ class Fitter:
     @fit_func.setter
     def fit_func(self, func):
         self._fit_func = func
+
+    def set_prior(self, param, mu, sigma, resampling=False):
+        assert(param in self.param.values())
+        self.prior_resampling = resampling
+        if resampling==True:
+            bins = np.random.normal(mu, sigma, size=self.statsType.num_bins)
+            self.prior_data[param] = DataStats(mu, bins, self.statsType)
+        else:
+            self.prior_data[param] = dMconstant(mu, self.statsType)
+        
+        def out(p, x):
+            return (x-p)/sigma
+        self.prior[param] = out
+
+        # def prior_func(p, *args):
+        #     for k, v in self.param.items():
+        #         if v in param:
+        #             prior = prior[v](param[k])
+        #             out = np.append(out, prior)   
+        # self.prior_func = prior_func
     
     def _cov(self, data, correlated):
         if correlated==True:
@@ -176,10 +208,15 @@ class Fitter:
         cov_inv_sqrt = cholesky(cov_inv)
         return cov_inv_sqrt
          
-    def _residual(self, x, y, cov_inv_sqrt):
+    def _residual(self, x, y, cov_inv_sqrt, prior_data):
         def func(param):
-            func = self.fit_func(param, x)
-            return np.dot(cov_inv_sqrt, func-y)   
+            fit_func = self.fit_func(param, x)
+            out = np.dot(cov_inv_sqrt, fit_func-y)
+            for idx, pr in enumerate(prior_data):
+                prior_func = self.prior[self.param[idx]]
+                out = np.append(out, prior_func(param[idx], pr))
+            return out
+            
         return func
 
     @staticmethod
@@ -187,7 +224,11 @@ class Fitter:
         return list(dict.values())
     
     def _collect_fit_param(self, fitted_param):
-        out = {self.param[i]: fitted_param[i].__str__() for i in range(len(self.param))}
+        out = {self.param[i]: fitted_param[i] for i in range(len(self.param))}
+        return out
+    
+    def _collect_fit_param_str(self, fitted_param):
+        out = {self.param[i]: str(fitted_param[i]) for i in range(len(self.param))}
         return out
     
     def _collect_fit_quality(self, fit):
@@ -198,6 +239,12 @@ class Fitter:
             'Ndof': Ndof, 
         }
         return out
+
+    def _collect_prior_data(self):
+        prior_data = []
+        for k, v in self.param.items():
+            prior_data.append(self.prior_data[v])
+        return dM.merge(prior_data)
 
     def _collect_output(self, fit, fitted_param):
         quality = self._collect_fit_quality(fit)
@@ -216,6 +263,43 @@ class Fitter:
     #     }
     #     return summary, sol
 
+    def _fitter(self, x, y, guess, cov_inv_sqrt, prior):
+        res = self._residual(x, y, cov_inv_sqrt, prior)
+        sol = leastsq(res, guess, maxfev=2000, ftol=1e-10, xtol=1e-10, full_output=True)
+        return sol
+
+    @dataStats_args
+    def _eval(self, x, y, guess, cov_inv_sqrt, prior): # prior data must be a list of DataStats
+        sol = self._fitter(x, y, guess, cov_inv_sqrt, prior)
+        return sol[0]
+
+    
+    def eval(self, fit_points, guess, correlated):
+        x = self.x[fit_points]
+        y = self.y[fit_points]
+        guess = self._parse_guess(guess)
+        cov_inv_sqrt = self._cov_inv_sqrt(y, correlated)
+        prior = self._collect_prior_data()
+
+        # deal with prior_data
+        fit = self._fitter(x, y.mean, guess, cov_inv_sqrt, prior.mean)
+        
+        
+        sol = self._eval(x, y, guess, cov_inv_sqrt, prior)
+        out = self._collect_output(fit, sol)
+        return out
+    
+    # this must just be a wrapper around least squares
+    def eval_mean(self, fit_range, guess, correlated):
+        x = self.x[fit_range]
+        y = self.y[fit_range]
+        guess = self._parse_guess(guess)
+        cov_inv_sqrt = self._cov_inv_sqrt(y, correlated)
+        res = self._residual(x, y.mean, cov_inv_sqrt)
+        
+        sol = leastsq(res, guess, maxfev=2000, ftol=1e-10, xtol=1e-10, full_output=True)
+        pv, chisq_Ndof, Ndof = chi_sq(sol)
+        return sol
 
     # this must scan ranges and provide a report (pandas dataframe)
     def _scan(self, fit_range: list, guess: list, *, correlated, min_num_points=None, max_num_points=None, thin=1):
@@ -300,8 +384,13 @@ class Fitter:
 
         fit_points = []
         fit_quality = []
-        for l in range(tot_lenght):
-            for u in range(min_num_points+l, l+max_num_points+1):
+        print(x)
+        for l in range(tot_lenght-min_num_points+1):
+            u_min = l+min_num_points
+            u_max = l+max_num_points+1
+            if u_max>tot_lenght:
+                u_max = tot_lenght+1
+            for u in range(u_min, u_max):
                 x_cut = x[l:u:thin]
                 if len(x_cut)<min_num_points:
                     continue
@@ -309,13 +398,14 @@ class Fitter:
                 cov_inv_sqrt_cut = cholesky(np.linalg.inv(cov[l:u:thin,l:u:thin]))
 
                 #fit = self._eval_mean(x_cut, y_cut.mean, guess, cov_inv_sqrt_cut)
-                fit = self._fitter(x_cut, y_cut.mean, guess, cov_inv_sqrt_cut)
+                prior = self._collect_prior_data()
+                fit = self._fitter(x_cut, y_cut.mean, guess, cov_inv_sqrt_cut, prior.mean)
                 quality = self._collect_fit_quality(fit)
                 pv = float(quality['pvalue'])
-                if pv<0.05 or pv>0.95:
-                    continue
-                param = self._eval(x_cut, y_cut, guess, cov_inv_sqrt_cut)
-                out = {**quality, **self._collect_fit_param(param)}
+                # if pv<0.05 or pv>0.95:
+                #     continue
+                param = self._eval(x_cut, y_cut, guess, cov_inv_sqrt_cut, prior)
+                out = {**quality, **self._collect_fit_param_str(param)}
                 
                 # collect
                 fit_points.append(str(slice(lower+l, lower+u, thin)))
@@ -337,37 +427,3 @@ class Fitter:
     # take output from leastsq and print results nicely
     def print(self):
         pass
-
-
-    def _fitter(self, x, y, guess, cov_inv_sqrt):
-        res = self._residual(x, y, cov_inv_sqrt)
-        sol = leastsq(res, guess, maxfev=2000, ftol=1e-10, xtol=1e-10, full_output=True)
-        return sol
-
-    @dataStats_args
-    def _eval(self, x, y, guess, cov_inv_sqrt):
-        sol = self._fitter(x, y, guess, cov_inv_sqrt)
-        return sol[0]
-    
-    def eval(self, fit_points, guess, correlated):
-        x = self.x[fit_points]
-        y = self.y[fit_points]
-        guess = self._parse_guess(guess)
-        cov_inv_sqrt = self._cov_inv_sqrt(y, correlated)
-        
-        fit = self._fitter(x, y.mean, guess, cov_inv_sqrt)
-        sol = self._eval(x, y, guess, cov_inv_sqrt)
-        out = self._collect_output(fit, sol)
-        return out
-    
-    # this must just be a wrapper around least squares
-    def eval_mean(self, fit_range, guess, correlated):
-        x = self.x[fit_range]
-        y = self.y[fit_range]
-        guess = self._parse_guess(guess)
-        cov_inv_sqrt = self._cov_inv_sqrt(y, correlated)
-        res = self._residual(x, y.mean, cov_inv_sqrt)
-        
-        sol = leastsq(res, guess, maxfev=2000, ftol=1e-10, xtol=1e-10, full_output=True)
-        pv, chisq_Ndof, Ndof = chi_sq(sol)
-        return sol
