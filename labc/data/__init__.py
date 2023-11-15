@@ -34,7 +34,7 @@ def _print_dataStats_bis(mean, err, prec):
 
     if -5<power_rel<0:
         mean_str = f"{mean/10**power_mean: .{power_mean-power_err+1}f}"
-        err_digits = int(err * 10**(-power_err+1))
+        err_digits = round(err * 10**(-power_err+1))
         err_str = f"{err_digits}"
         out = f"{mean_str}({err_str}){power_str}"     
     else:
@@ -392,6 +392,9 @@ def empty(T, statsType):
     bins = np.empty(shape=(num_bins, T))
     out = DataStats(mean, bins, statsType)
     return out
+
+def constant(const, statsType):
+    return const * ones(1, statsType)
 
 def random(T, statsType):
     num_bins = statsType.num_bins
