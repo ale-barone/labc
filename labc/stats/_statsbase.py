@@ -30,7 +30,7 @@ class Istats(ABC):
 
 class StatsBase(Istats):
     
-    def __init__(self, num_config, num_bins, seed=None):
+    def __init__(self, num_config=None, num_bins=None, seed=None):
         self.num_config = num_config
         self.num_bins = num_bins
         self.seed = seed
@@ -58,11 +58,34 @@ class StatsBase(Istats):
     def generate_bins(self, array_raw_in):
         pass
 
+    def _get_num_bins(self, array_in):
+        num_bins = len(array_in)
+        return num_bins
+
+    def _get_prefactor(self, array_in):
+        if self.prefactor!=None:
+            prefactor = self.prefactor
+        else:
+            num_bins = self._get_num_bins(array_in)
+            if self.ID=='Jack':
+                prefactor = num_bins-1
+            elif self.ID=='Boot':
+                prefactor=1
+        return prefactor
+
+    def _assert_bins_size(self, array_in):
+        if self.num_bins!=None:
+            print('if')
+            assert(self.num_bins==len(array_in)),\
+            "size of array is different from the number of bins"\
+            " 'num_bins' of the object StatsType"
+
     def err_func(self, array_mean_in, array_bins_in):
         # error 
-        diff = array_bins_in - array_mean_in
-        diff2 = diff**2
-        err2 = self.prefactor * np.mean(diff2, 0)
+        diff2 = (array_bins_in - array_mean_in)**2
+        self._assert_bins_size(diff2)
+        prefactor = self._get_prefactor(diff2)
+        err2 = prefactor * np.mean(diff2, 0)
         err = np.sqrt(err2)
         return err
 
@@ -93,7 +116,8 @@ class StatsBase(Istats):
             vec_y = bins_y_cut_aux - data_y_cut_mean
             cov[b] = np.outer(vec_x, vec_y)
   
-        cov = self.prefactor * np.mean(cov, 0)
+        prefactor = self._get_prefactor(diff2)
+        cov = prefactor * np.mean(cov, 0)
         return cov
 
     def cov(self, data_x_in, *, num_bins=None, rangefit=None, thin=1):

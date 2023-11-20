@@ -3,7 +3,11 @@ from ._statsjack import StatsJack as _StatsJack
 from ._statsboot import StatsBoot as _StatsBoot
 
 
-class StatsType:
+class StatsType(_StatsBase):
+
+    def __init__(self, statsID):
+        super().__init__()
+        self.ID = statsID
 
     class Jack:
         def __new__(cls, *, num_config):
