@@ -58,15 +58,16 @@ class StatsBase(Istats):
     def generate_bins(self, array_raw_in):
         pass
 
-    def _get_num_bins(self, array_in):
-        num_bins = len(array_in)
+    def _get_num_bins(self, array_bins_in: np.ndarray):
+        assert(array_bins_in.ndim==2)
+        num_bins = len(array_bins_in)
         return num_bins
 
-    def _get_prefactor(self, array_in):
+    def _get_prefactor(self, array_bins_in: np.ndarray):
         if self.prefactor!=None:
             prefactor = self.prefactor
         else:
-            num_bins = self._get_num_bins(array_in)
+            num_bins = self._get_num_bins(array_bins_in)
             if self.ID=='Jack':
                 prefactor = num_bins-1
             elif self.ID=='Boot':
@@ -116,7 +117,8 @@ class StatsBase(Istats):
             vec_y = bins_y_cut_aux - data_y_cut_mean
             cov[b] = np.outer(vec_x, vec_y)
   
-        prefactor = self._get_prefactor(diff2)
+        prefactor = self._get_prefactor(data_x_in.bins)
+        print(prefactor)
         cov = prefactor * np.mean(cov, 0)
         return cov
 
