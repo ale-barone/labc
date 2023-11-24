@@ -431,7 +431,7 @@ def dataStats_args(func):
 
         if is_data_stats:
             statsType = DataStats._get_statsType(args) 
-            num_bins = statsType.num_bins
+            num_bins = DataStats._get_num_bins(args) #statsType.num_bins
 
             args_mean = DataStats._collect_mean_args(args)
             mean = func(*args_mean, **kwargs)    
