@@ -4,6 +4,9 @@ import numpy as np
 def const(param, t):
     return param[0]
 
+def lin(param, t):
+    return param[0]*t + param[1]
+
 def exp(param, t):
     return param[0] * np.exp(-param[1]*t)
 
@@ -41,6 +44,14 @@ class Const:
 
     def __new__(cls):
         return const
+    
+class Lin:
+    STRING = 'f(t) = Ax + B'
+    PARAM = {0: 'A', 1: 'B'}
+    ARGS ={}
+
+    def __new__(cls):
+        return lin
 
 class Exp:
     STRING = 'f(t) = A*exp(-E*t)'

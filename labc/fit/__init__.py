@@ -151,11 +151,11 @@ class Fitter:
         # initialize null priors
         def null_prior(*args):
             return 0
-        null_prior_data = dMzeros(1, self.statsType)
+        null_prior_data = 0*y #dMzeros(1, self.statsType)
         
         self.prior = {v: null_prior for v in self.param.values()}
         self.prior_resampling = None
-        self.prior_data = {v: null_prior_data for v in self.param.values()}
+        self.prior_data = {v: null_prior_data[vi] for vi, v in enumerate(self.param.values())}
 
         # print('\n_________________________________________')
         # print('| --- Initialise fitter for function ')
@@ -277,13 +277,13 @@ class Fitter:
     def eval(self, fit_points, guess, correlated):
         x = self.x[fit_points]
         y = self.y[fit_points]
+        print(y)
         guess = self._parse_guess(guess)
         cov_inv_sqrt = self._cov_inv_sqrt(y, correlated)
         prior = self._collect_prior_data()
 
         # deal with prior_data
         fit = self._fitter(x, y.mean, guess, cov_inv_sqrt, prior.mean)
-        
         
         sol = self._eval(x, y, guess, cov_inv_sqrt, prior)
         out = self._collect_output(fit, sol)
@@ -295,7 +295,12 @@ class Fitter:
         y = self.y[fit_range]
         guess = self._parse_guess(guess)
         cov_inv_sqrt = self._cov_inv_sqrt(y, correlated)
-        res = self._residual(x, y.mean, cov_inv_sqrt)
+
+        prior = self._collect_prior_data()
+        res = self._residual(x, y.mean, cov_inv_sqrt, prior.mean)
+
+        print('res_eval_mean')
+        print(res([1,1]))
         
         sol = leastsq(res, guess, maxfev=2000, ftol=1e-10, xtol=1e-10, full_output=True)
         pv, chisq_Ndof, Ndof = chi_sq(sol)
