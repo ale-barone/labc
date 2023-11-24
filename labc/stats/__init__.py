@@ -10,8 +10,8 @@ class StatsType(_StatsBase):
         self.ID = statsID
 
     class Jack:
-        def __new__(cls, *, num_config):
-            return _StatsJack(num_config)
+        def __new__(cls, *, num_config, num_bins):
+            return _StatsJack(num_config, num_bins)
     
     class Boot:
         def __new__(cls, *, num_config, num_bins, seed=0):
