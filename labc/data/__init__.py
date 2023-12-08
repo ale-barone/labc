@@ -32,7 +32,7 @@ def _print_dataStats_bis(mean, err, prec):
     power_str = f"{10**power_mean:.0e}".replace('1e', 'e')
     mean_str = f"{mean/10**power_mean: .{prec}f}"
 
-    if -5<power_rel<0:
+    if -5<power_rel<=0:
         mean_str = f"{mean/10**power_mean: .{power_mean-power_err+1}f}"
         err_digits = round(err * 10**(-power_err+1))
         err_str = f"{err_digits}"
@@ -89,6 +89,18 @@ class DataStats:
             out += space + _print_dataStats(self.mean[-1], self.err[-1], prec) + "]"
         else:
             out += _print_dataStats(self.mean[0], self.err[0], prec) + "]" 
+        return out
+    
+    def print(self, prec=2):
+        space = " "
+        out = []
+        if len(self)>1:
+            out.append(_print_dataStats_bis(self.mean[0], self.err[0], prec))
+            for mean, err in zip(self.mean[1:-1], self.err[1:-1]):
+                out.append(_print_dataStats_bis(mean, err, prec))
+            out.append(space + _print_dataStats_bis(self.mean[-1], self.err[-1], prec))
+        else:
+            out.append(_print_dataStats_bis(self.mean[0], self.err[0], prec))
         return out
         
     def num_bins(self):
