@@ -23,18 +23,21 @@ def _print_dataStats(mean, err, prec):
     return out
 
 # notation like 3.244(12)
-def _print_dataStats_bis(mean, err, prec):
+def _print_dataStats_bis(mean, err, num_digits=0):
     """Print mean and error in the form (mean(err))e+xx"""   
     power_err = floor(log10(np.abs(err))) if not err==0 else 0 
     power_mean = floor(log10(np.abs(mean))) if not mean==0 else 0
     power_rel = power_err-power_mean
     
     power_str = f"{10**power_mean:.0e}".replace('1e', 'e')
-    mean_str = f"{mean/10**power_mean: .{prec}f}"
+
+    mean_prec = power_mean-power_err + (num_digits-1)
+    err_prec = -power_err + (num_digits-1)
 
     if -5<power_rel<=0:
-        mean_str = f"{mean/10**power_mean: .{power_mean-power_err+1}f}"
-        err_digits = round(err * 10**(-power_err+1))
+        mean_num_digits = mean_prec#power_mean-power_err+1+extra_digits
+        mean_str = f"{mean/10**power_mean:.{mean_num_digits}f}"
+        err_digits = round(err * 10**(err_prec))
         err_str = f"{err_digits}"
         out = f"{mean_str}({err_str}){power_str}"     
     else:
@@ -91,16 +94,13 @@ class DataStats:
             out += _print_dataStats(self.mean[0], self.err[0], prec) + "]" 
         return out
     
-    def print(self, prec=2):
-        space = " "
-        out = []
+    def print(self, num_digits=2):
+        out = [_print_dataStats_bis(self.mean[0], self.err[0], num_digits)]
         if len(self)>1:
-            out.append(_print_dataStats_bis(self.mean[0], self.err[0], prec))
+            #out.append(_print_dataStats_bis(self.mean[0], self.err[0], prec))
             for mean, err in zip(self.mean[1:-1], self.err[1:-1]):
-                out.append(_print_dataStats_bis(mean, err, prec))
-            out.append(space + _print_dataStats_bis(self.mean[-1], self.err[-1], prec))
-        else:
-            out.append(_print_dataStats_bis(self.mean[0], self.err[0], prec))
+                out.append(_print_dataStats_bis(mean, err, num_digits))
+            out.append(_print_dataStats_bis(self.mean[-1], self.err[-1], num_digits))
         return out
         
     def num_bins(self):
