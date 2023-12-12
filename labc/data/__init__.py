@@ -31,15 +31,19 @@ def _print_dataStats_bis(mean, err, num_digits=0):
     
     power_str = f"{10**power_mean:.0e}".replace('1e', 'e')
 
-    mean_prec = power_mean-power_err + (num_digits-1)
-    err_prec = -power_err + (num_digits-1)
+    mean_num_digits = power_mean-power_err + (num_digits-1)
+    mean_str = f"{mean/10**power_mean:.{mean_num_digits}f}"
 
-    if -5<power_rel<=0:
-        mean_num_digits = mean_prec#power_mean-power_err+1+extra_digits
-        mean_str = f"{mean/10**power_mean:.{mean_num_digits}f}"
+    if -5<power_rel<0:
+        err_prec = -power_err + (num_digits-1)
         err_digits = round(err * 10**(err_prec))
         err_str = f"{err_digits}"
-        out = f"{mean_str}({err_str}){power_str}"     
+        out = f"{mean_str}({err_str}){power_str}"
+    elif power_rel==0:
+        err_prec = -power_err #+ (num_digits-1)
+        err_digits = err*10**(err_prec)
+        err_str = f"{err_digits:.{num_digits-1}f}"
+        out = f"{mean_str}({err_str}){power_str}"
     else:
         err_str = f"{err * 10**(-power_mean): .1e}"
         out = f"({mean_str} +- {err_str} ){power_str}"
