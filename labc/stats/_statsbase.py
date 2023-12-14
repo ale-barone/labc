@@ -118,7 +118,6 @@ class StatsBase(Istats):
             cov[b] = np.outer(vec_x, vec_y)
   
         prefactor = self._get_prefactor(data_x_in.bins)
-        print(prefactor)
         cov = prefactor * np.mean(cov, 0)
         return cov
 
