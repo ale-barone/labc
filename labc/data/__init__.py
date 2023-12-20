@@ -64,6 +64,8 @@ class DataStats:
         self.mean = self._data_vectorized[0]
         self.bins = self._data_vectorized[1:]
         self._err = None
+        self._cov = None
+        self._corr = None
 
         # stats
         self.statsType = statsType
@@ -72,7 +74,19 @@ class DataStats:
     def err(self):
         if self._err is None:
             self._err = self.statsType.err_func(self.mean, self.bins)
-        return self._err 
+        return self._err
+    
+    @property
+    def cov(self):
+        if self._cov is None:
+            self._cov = self.statsType.cov(self)
+        return self._cov
+    
+    @property
+    def corr(self):
+        if self._corr is None:
+            self._corr = self.statsType.corr(self)
+        return self._corr
     
     def __repr__(self):
         prec = 4 # precision
