@@ -76,7 +76,6 @@ class StatsBase(Istats):
 
     def _assert_bins_size(self, array_in):
         if self.num_bins!=None:
-            print('if')
             assert(self.num_bins==len(array_in)),\
             "size of array is different from the number of bins"\
             " 'num_bins' of the object StatsType"

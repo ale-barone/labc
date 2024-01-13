@@ -93,10 +93,10 @@ class DataStats:
         space = len('DataStats[')*" "
         out = f"DataStats["
         if len(self)>1:
-            out += f"{self.mean[0]: .4e} +- {self.err[0]:.4e},\n" + space
+            out += f"{self.mean[0]: .{prec}e} +- {self.err[0]:.{prec}e},\n" + space
             for mean, err in zip(self.mean[1:-1], self.err[1:-1]):
                 out += f"{mean: .{prec}e} +- {err:.{prec}e},\n" + space
-        out += f"{self.mean[-1]: .4e} +- {self.err[-1]:.4e}]"      
+        out += f"{self.mean[-1]: .{prec}e} +- {self.err[-1]:.{prec}e}]"      
         return out
 
     def __str__(self):
@@ -186,11 +186,14 @@ class DataStats:
     
     # math overload
     def _overload_math(self, other, operation):
-        if isinstance(other, DataStats):
-            out = self._overload_math_dataStats(other, operation)      
-        else:
-            out = self._overload_math_numpy(other, operation) 
-        return out
+        try:
+            if isinstance(other, DataStats):
+                out = self._overload_math_dataStats(other, operation)      
+            else:
+                out = self._overload_math_numpy(other, operation)
+            return out
+        except:
+            return NotImplemented
 
     # OVERLOAD OF MATH OPERATIONS
     def __mul__(self, other):
@@ -389,17 +392,213 @@ class DataStats:
         out = self._make_dataStats(out_mean, out_bins)
         return out 
 
+
+# class DataStatsErr(DataStats):
+
+#     def __init__(self, mean, *)
+
+class DataErr:
+    """Class for error propagation."""
+
+    def __init__(self, mean, *, err=None, cov=None):
+        if cov is None:
+            self.cov = np.diag(err**2)
+        elif cov is not None:
+            #assert(np.allclose(err**2, np.diag(cov), atol=1e-15))
+            assert(err is None), "'err' must be 'None' if cov is specified"
+            assert(cov.ndim==2), f"'cov' has to be a 2D array, " \
+                                  f" here ndim={cov.ndim}" \
+                                  f" with shape={cov.shape}"
+            self.cov = cov
+            err = np.sqrt(np.diag(cov))
+
+
+        if not isinstance(mean, (np.ndarray, list)):
+            mean = np.array([mean])
+            err = np.array([err])
+        self.mean = np.asarray(mean)
+        self.err = np.asarray(err)
+        assert(len(mean)==len(err))
+
+        
+        self._num_bins = 10000
+        self._seed = 0
+    
+    def __repr__(self):
+        prec = 4 # precision
+        space = len('DataErr[')*" "
+        out = f"DataErr["
+        if len(self)>1:
+            out += f"{self.mean[0]: .{prec}e} +- {self.err[0]:.{prec}e},\n" + space
+            for mean, err in zip(self.mean[1:-1], self.err[1:-1]):
+                out += f"{mean: .{prec}e} +- {err:.{prec}e},\n" + space
+        out += f"{self.mean[-1]: .{prec}e} +- {self.err[-1]:.{prec}e}]"      
+        return out
+
+    def __str__(self):
+        prec = 5 # precision
+        space = len('DataErr[')*" "
+        out = f"DataErr["
+        if len(self)>1:
+            out += _print_dataStats(self.mean[0], self.err[0], prec) + ",\n"
+            for mean, err in zip(self.mean[1:-1], self.err[1:-1]):
+                out += space + _print_dataStats(mean, err, prec) + ",\n"
+            out += space + _print_dataStats(self.mean[-1], self.err[-1], prec) + "]"
+        else:
+            out += _print_dataStats(self.mean[0], self.err[0], prec) + "]" 
+        return out
+    
+    def __len__(self):
+        return len(self.mean)
+
+    @property
+    def num_bins(self):
+        return self._num_bins
+    
+    @num_bins.setter
+    def num_bins(self, num):
+        self._num_bins = num
+
+    @property
+    def seed(self):
+        return self._seed
+    
+    @seed.setter
+    def seed(self, num):
+        self._seed = num
+    
+
+    def resample(self, num_bins=None, seed=None):
+        if num_bins is None:
+            num_bins = self.num_bins
+        if seed is None:
+            seed = self.seed
+        np.random.seed(seed)
+        bins = np.random.multivariate_normal(self.mean, self.cov, num_bins)
+        return bins
+    
+
+    # generic overload for mathematical operations among 2 DataStats objects
+    def _overload_math_dataStats(self, other, operation):
+        statsType = other.statsType
+        num_bins = other.num_bins()
+        statsType.num_bins = num_bins
+
+        raw_bins = self.resample(num_bins, statsType.seed)
+        bins = statsType.generate_bins(raw_bins)
+
+        data = DataStats(self.mean, bins, statsType)
+        out_data = getattr(other, operation)(data)
+        return out_data
+    
+    def _overload_math_dataErr(self, other, operation):
+        bins = self.resample()
+        bins_other = other.resample()
+        out_bins = getattr(bins, operation)(bins_other)
+        out_mean = getattr(self.mean, operation)(other.mean)
+        out_err = np.sqrt(np.var(out_bins, axis=0))
+        out = DataErr(out_mean, err=out_err)
+        return out
+    
+    # generic overload for mathematical operations (following numpy)
+    def _overload_math_numpy(self, other, operation):
+        out_mean = getattr(self.mean, operation)(other)
+        bins = self.resample()
+        out_bins = getattr(bins, operation)(other)
+        #out_err = getattr(self.err, operation)(other)
+        out_err = np.sqrt(np.var(out_bins, axis=0))
+        #out_cov = getattr(self.cov, operation)(other)
+        # recompute covariance with np.cov?
+        out = DataErr(out_mean, err=out_err)
+        return out
+    
+    # # math overload
+
+    def _overload_math(self, other, operation):
+        if isinstance(other, DataErr):
+            out = self._overload_math_dataErr(other, operation)    
+        elif isinstance(other, DataStats):
+            out = self._overload_math_dataStats(other, operation)      
+        else:
+            try:
+                out = self._overload_math_numpy(other, operation)
+                return out
+            except:
+                return NotImplemented
+        return out
+
+    # OVERLOAD OF MATH OPERATIONS
+    def __mul__(self, other):
+        return self._overload_math(other, '__mul__')
+    
+    def __rmul__(self, other):
+        return self._overload_math(other, '__rmul__')
+            
+    def __truediv__(self, other):
+        return self._overload_math(other, '__truediv__')
+    
+    def __rtruediv__(self, other):
+        return self._overload_math(other, '__rtruediv__')
+    
+    def __add__(self, other):
+        return self._overload_math(other, '__add__')
+
+    def __radd__(self, other):
+        return self._overload_math(other, '__radd__')
+
+    def __sub__(self, other):
+        return self._overload_math(other, '__sub__')
+
+    def __rsub__(self, other):
+        return self._overload_math(other, '__rsub__')
+
+    def __pow__(self, other):
+        return self._overload_math(other, '__pow__')
+
+    def __neg__(self):
+        return -1*self
+    
+    def __pos__(self):
+        return +1*self
+    
+    def __eq__(self, other):
+        # np.array_equal ?
+        if isinstance(other, DataErr):
+            # add some printing
+            if np.allclose(self.mean, other.mean, atol=1e-15) \
+               and np.allclose(self.err, other.err, atol=1e-15):
+                return True
+            else:
+                return False
+
+    
+
+
 ################################################################################
 # UTILITIES
 ################################################################################
 
+# def merge(*data_in):
+#     if isinstance(data_in[0], list):
+#         data_in = tuple(data_in[0])
+#     statsType = data_in[0].statsType
+
+#     data_vectorized = np.concatenate([data._data_vectorized for data in data_in], axis=1)
+#     out = DataStats(data_vectorized[0], data_vectorized[1:], statsType)
+#     return out
+
 def merge(*data_in):
     if isinstance(data_in[0], list):
         data_in = tuple(data_in[0])
-    statsType = data_in[0].statsType
-
-    data_vectorized = np.concatenate([data._data_vectorized for data in data_in], axis=1)
-    out = DataStats(data_vectorized[0], data_vectorized[1:], statsType)
+    
+    if isinstance(data_in[0], DataStats):
+        statsType = data_in[0].statsType
+        data_vectorized = np.concatenate([data._data_vectorized for data in data_in], axis=1)
+        out = DataStats(data_vectorized[0], data_vectorized[1:], statsType)
+    elif isinstance(data_in[0], DataErr):
+        mean = np.concatenate([data.mean for data in data_in])
+        err = np.concatenate([data.err for data in data_in])
+        out = DataErr(mean, err=err)
     return out
 
 def zeros(T, statsType):

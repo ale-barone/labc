@@ -14,8 +14,8 @@ class StatsJack(StatsBase):
         """It generates resampled bins from raw data using jackknife."""
         num_config = np.size(array_raw_in, 0)
         # FIXME to allow rebinning
-        assert(num_config==self.num_bins),\
-            "num_bins of the object does not agree with StatsType.Jack"
-        bins = np.array([np.delete(np.arange(self.num_bins), b, 0) for b in range(self.num_bins)])
+        # assert(num_config==self.num_bins),\
+        #     "num_bins of the object does not agree with StatsType.Jack"
+        bins = np.array([np.delete(np.arange(num_config), b, 0) for b in range(num_config)])
         bins = np.mean(array_raw_in[bins], axis=1)
         return bins
