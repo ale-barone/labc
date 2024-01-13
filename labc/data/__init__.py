@@ -23,20 +23,27 @@ def _print_dataStats(mean, err, prec):
     return out
 
 # notation like 3.244(12)
-def _print_dataStats_bis(mean, err, prec):
+def _print_dataStats_bis(mean, err, num_digits=0):
     """Print mean and error in the form (mean(err))e+xx"""   
     power_err = floor(log10(np.abs(err))) if not err==0 else 0 
     power_mean = floor(log10(np.abs(mean))) if not mean==0 else 0
     power_rel = power_err-power_mean
     
     power_str = f"{10**power_mean:.0e}".replace('1e', 'e')
-    mean_str = f"{mean/10**power_mean: .{prec}f}"
+
+    mean_num_digits = power_mean-power_err + (num_digits-1)
+    mean_str = f"{mean/10**power_mean:.{mean_num_digits}f}"
 
     if -5<power_rel<0:
-        mean_str = f"{mean/10**power_mean: .{power_mean-power_err+1}f}"
-        err_digits = int(err * 10**(-power_err+1))
+        err_prec = -power_err + (num_digits-1)
+        err_digits = round(err * 10**(err_prec))
         err_str = f"{err_digits}"
-        out = f"{mean_str}({err_str}){power_str}"     
+        out = f"{mean_str}({err_str}){power_str}"
+    elif power_rel==0:
+        err_prec = -power_err #+ (num_digits-1)
+        err_digits = err*10**(err_prec)
+        err_str = f"{err_digits:.{num_digits-1}f}"
+        out = f"{mean_str}({err_str}){power_str}"
     else:
         err_str = f"{err * 10**(-power_mean): .1e}"
         out = f"({mean_str} +- {err_str} ){power_str}"
@@ -57,6 +64,8 @@ class DataStats:
         self.mean = self._data_vectorized[0]
         self.bins = self._data_vectorized[1:]
         self._err = None
+        self._cov = None
+        self._corr = None
 
         # stats
         self.statsType = statsType
@@ -65,17 +74,29 @@ class DataStats:
     def err(self):
         if self._err is None:
             self._err = self.statsType.err_func(self.mean, self.bins)
-        return self._err 
+        return self._err
+    
+    @property
+    def cov(self):
+        if self._cov is None:
+            self._cov = self.statsType.cov(self)
+        return self._cov
+    
+    @property
+    def corr(self):
+        if self._corr is None:
+            self._corr = self.statsType.corr(self)
+        return self._corr
     
     def __repr__(self):
         prec = 4 # precision
         space = len('DataStats[')*" "
         out = f"DataStats["
         if len(self)>1:
-            out += f"{self.mean[0]: .4e} +- {self.err[0]:.4e},\n" + space
+            out += f"{self.mean[0]: .{prec}e} +- {self.err[0]:.{prec}e},\n" + space
             for mean, err in zip(self.mean[1:-1], self.err[1:-1]):
                 out += f"{mean: .{prec}e} +- {err:.{prec}e},\n" + space
-        out += f"{self.mean[-1]: .4e} +- {self.err[-1]:.4e}]"      
+        out += f"{self.mean[-1]: .{prec}e} +- {self.err[-1]:.{prec}e}]"      
         return out
 
     def __str__(self):
@@ -89,6 +110,15 @@ class DataStats:
             out += space + _print_dataStats(self.mean[-1], self.err[-1], prec) + "]"
         else:
             out += _print_dataStats(self.mean[0], self.err[0], prec) + "]" 
+        return out
+    
+    def print(self, num_digits=2):
+        out = [_print_dataStats_bis(self.mean[0], self.err[0], num_digits)]
+        if len(self)>1:
+            #out.append(_print_dataStats_bis(self.mean[0], self.err[0], prec))
+            for mean, err in zip(self.mean[1:-1], self.err[1:-1]):
+                out.append(_print_dataStats_bis(mean, err, num_digits))
+            out.append(_print_dataStats_bis(self.mean[-1], self.err[-1], num_digits))
         return out
         
     def num_bins(self):
@@ -156,11 +186,14 @@ class DataStats:
     
     # math overload
     def _overload_math(self, other, operation):
-        if isinstance(other, DataStats):
-            out = self._overload_math_dataStats(other, operation)      
-        else:
-            out = self._overload_math_numpy(other, operation) 
-        return out
+        try:
+            if isinstance(other, DataStats):
+                out = self._overload_math_dataStats(other, operation)      
+            else:
+                out = self._overload_math_numpy(other, operation)
+            return out
+        except:
+            return NotImplemented
 
     # OVERLOAD OF MATH OPERATIONS
     def __mul__(self, other):
@@ -359,17 +392,213 @@ class DataStats:
         out = self._make_dataStats(out_mean, out_bins)
         return out 
 
+
+# class DataStatsErr(DataStats):
+
+#     def __init__(self, mean, *)
+
+class DataErr:
+    """Class for error propagation."""
+
+    def __init__(self, mean, *, err=None, cov=None):
+        if cov is None:
+            self.cov = np.diag(err**2)
+        elif cov is not None:
+            #assert(np.allclose(err**2, np.diag(cov), atol=1e-15))
+            assert(err is None), "'err' must be 'None' if cov is specified"
+            assert(cov.ndim==2), f"'cov' has to be a 2D array, " \
+                                  f" here ndim={cov.ndim}" \
+                                  f" with shape={cov.shape}"
+            self.cov = cov
+            err = np.sqrt(np.diag(cov))
+
+
+        if not isinstance(mean, (np.ndarray, list)):
+            mean = np.array([mean])
+            err = np.array([err])
+        self.mean = np.asarray(mean)
+        self.err = np.asarray(err)
+        assert(len(mean)==len(err))
+
+        
+        self._num_bins = 10000
+        self._seed = 0
+    
+    def __repr__(self):
+        prec = 4 # precision
+        space = len('DataErr[')*" "
+        out = f"DataErr["
+        if len(self)>1:
+            out += f"{self.mean[0]: .{prec}e} +- {self.err[0]:.{prec}e},\n" + space
+            for mean, err in zip(self.mean[1:-1], self.err[1:-1]):
+                out += f"{mean: .{prec}e} +- {err:.{prec}e},\n" + space
+        out += f"{self.mean[-1]: .{prec}e} +- {self.err[-1]:.{prec}e}]"      
+        return out
+
+    def __str__(self):
+        prec = 5 # precision
+        space = len('DataErr[')*" "
+        out = f"DataErr["
+        if len(self)>1:
+            out += _print_dataStats(self.mean[0], self.err[0], prec) + ",\n"
+            for mean, err in zip(self.mean[1:-1], self.err[1:-1]):
+                out += space + _print_dataStats(mean, err, prec) + ",\n"
+            out += space + _print_dataStats(self.mean[-1], self.err[-1], prec) + "]"
+        else:
+            out += _print_dataStats(self.mean[0], self.err[0], prec) + "]" 
+        return out
+    
+    def __len__(self):
+        return len(self.mean)
+
+    @property
+    def num_bins(self):
+        return self._num_bins
+    
+    @num_bins.setter
+    def num_bins(self, num):
+        self._num_bins = num
+
+    @property
+    def seed(self):
+        return self._seed
+    
+    @seed.setter
+    def seed(self, num):
+        self._seed = num
+    
+
+    def resample(self, num_bins=None, seed=None):
+        if num_bins is None:
+            num_bins = self.num_bins
+        if seed is None:
+            seed = self.seed
+        np.random.seed(seed)
+        bins = np.random.multivariate_normal(self.mean, self.cov, num_bins)
+        return bins
+    
+
+    # generic overload for mathematical operations among 2 DataStats objects
+    def _overload_math_dataStats(self, other, operation):
+        statsType = other.statsType
+        num_bins = other.num_bins()
+        statsType.num_bins = num_bins
+
+        raw_bins = self.resample(num_bins, statsType.seed)
+        bins = statsType.generate_bins(raw_bins)
+
+        data = DataStats(self.mean, bins, statsType)
+        out_data = getattr(other, operation)(data)
+        return out_data
+    
+    def _overload_math_dataErr(self, other, operation):
+        bins = self.resample()
+        bins_other = other.resample()
+        out_bins = getattr(bins, operation)(bins_other)
+        out_mean = getattr(self.mean, operation)(other.mean)
+        out_err = np.sqrt(np.var(out_bins, axis=0))
+        out = DataErr(out_mean, err=out_err)
+        return out
+    
+    # generic overload for mathematical operations (following numpy)
+    def _overload_math_numpy(self, other, operation):
+        out_mean = getattr(self.mean, operation)(other)
+        bins = self.resample()
+        out_bins = getattr(bins, operation)(other)
+        #out_err = getattr(self.err, operation)(other)
+        out_err = np.sqrt(np.var(out_bins, axis=0))
+        #out_cov = getattr(self.cov, operation)(other)
+        # recompute covariance with np.cov?
+        out = DataErr(out_mean, err=out_err)
+        return out
+    
+    # # math overload
+
+    def _overload_math(self, other, operation):
+        if isinstance(other, DataErr):
+            out = self._overload_math_dataErr(other, operation)    
+        elif isinstance(other, DataStats):
+            out = self._overload_math_dataStats(other, operation)      
+        else:
+            try:
+                out = self._overload_math_numpy(other, operation)
+                return out
+            except:
+                return NotImplemented
+        return out
+
+    # OVERLOAD OF MATH OPERATIONS
+    def __mul__(self, other):
+        return self._overload_math(other, '__mul__')
+    
+    def __rmul__(self, other):
+        return self._overload_math(other, '__rmul__')
+            
+    def __truediv__(self, other):
+        return self._overload_math(other, '__truediv__')
+    
+    def __rtruediv__(self, other):
+        return self._overload_math(other, '__rtruediv__')
+    
+    def __add__(self, other):
+        return self._overload_math(other, '__add__')
+
+    def __radd__(self, other):
+        return self._overload_math(other, '__radd__')
+
+    def __sub__(self, other):
+        return self._overload_math(other, '__sub__')
+
+    def __rsub__(self, other):
+        return self._overload_math(other, '__rsub__')
+
+    def __pow__(self, other):
+        return self._overload_math(other, '__pow__')
+
+    def __neg__(self):
+        return -1*self
+    
+    def __pos__(self):
+        return +1*self
+    
+    def __eq__(self, other):
+        # np.array_equal ?
+        if isinstance(other, DataErr):
+            # add some printing
+            if np.allclose(self.mean, other.mean, atol=1e-15) \
+               and np.allclose(self.err, other.err, atol=1e-15):
+                return True
+            else:
+                return False
+
+    
+
+
 ################################################################################
 # UTILITIES
 ################################################################################
 
+# def merge(*data_in):
+#     if isinstance(data_in[0], list):
+#         data_in = tuple(data_in[0])
+#     statsType = data_in[0].statsType
+
+#     data_vectorized = np.concatenate([data._data_vectorized for data in data_in], axis=1)
+#     out = DataStats(data_vectorized[0], data_vectorized[1:], statsType)
+#     return out
+
 def merge(*data_in):
     if isinstance(data_in[0], list):
         data_in = tuple(data_in[0])
-    statsType = data_in[0].statsType
-
-    data_vectorized = np.concatenate([data._data_vectorized for data in data_in], axis=1)
-    out = DataStats(data_vectorized[0], data_vectorized[1:], statsType)
+    
+    if isinstance(data_in[0], DataStats):
+        statsType = data_in[0].statsType
+        data_vectorized = np.concatenate([data._data_vectorized for data in data_in], axis=1)
+        out = DataStats(data_vectorized[0], data_vectorized[1:], statsType)
+    elif isinstance(data_in[0], DataErr):
+        mean = np.concatenate([data.mean for data in data_in])
+        err = np.concatenate([data.err for data in data_in])
+        out = DataErr(mean, err=err)
     return out
 
 def zeros(T, statsType):
@@ -393,6 +622,9 @@ def empty(T, statsType):
     out = DataStats(mean, bins, statsType)
     return out
 
+def constant(const, statsType):
+    return const * ones(1, statsType)
+
 def random(T, statsType):
     num_bins = statsType.num_bins
     mean = np.random.normal(0, 1, T)
@@ -403,6 +635,14 @@ def random(T, statsType):
 def uniform(T, statsType, low=0.0, high=1.0):   
     num_bins = statsType.num_bins
     bins = np.random.uniform(low=low, high=high, size=(num_bins, T))
+    mean = np.mean(bins, 0)
+    out = DataStats(mean, bins, statsType)
+    return out
+
+def Z2(T, statsType):   
+    num_bins = statsType.num_bins
+    bins = np.random.randint(low=-1, high=1, size=(num_bins, T))
+    bins = np.where(bins<0, bins, +1)
     mean = np.mean(bins, 0)
     out = DataStats(mean, bins, statsType)
     return out
@@ -420,7 +660,7 @@ def dataStats_args(func):
 
         if is_data_stats:
             statsType = DataStats._get_statsType(args) 
-            num_bins = statsType.num_bins
+            num_bins = DataStats._get_num_bins(args) #statsType.num_bins
 
             args_mean = DataStats._collect_mean_args(args)
             mean = func(*args_mean, **kwargs)    
@@ -468,7 +708,7 @@ def dataStats_func(func):
 
         if is_data_stats:
             statsType = DataStats._get_statsType(args) 
-            num_bins = statsType.num_bins
+            num_bins =  DataStats._get_num_bins(args) #statsType.num_bins
 
             args_mean = DataStats._collect_mean_args(args)
             func_mean = func(*args_mean, **kwargs) 

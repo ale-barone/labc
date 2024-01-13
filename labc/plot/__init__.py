@@ -2,6 +2,7 @@ import numpy as np
 from ..data  import DataStats
 from matplotlib.axes import Axes
 import matplotlib.pyplot as plt
+from matplotlib import rc
 from matplotlib.pyplot import *
 
 
@@ -10,11 +11,11 @@ from matplotlib.pyplot import *
 # ==============================================================================
 
 FIGSIZE = (10, 7)
-FONTSIZE = {'S' : 16, 'M': 18, 'B': 20, 'BB': 22}
+FONTSIZE = {'S' : 22, 'M': 24, 'B': 26, 'BB': 28}
 LABELS = {'x' : 't', 'y' : 'y', 'title' : 'Title'}
 
-MARKERSIZE = '6'
-CAPSIZE = 2
+MARKERSIZE = 8
+CAPSIZE = 3
 ELINEWIDTH = 0.9
 
 # ==============================================================================
@@ -28,20 +29,15 @@ def init_plot(*args, **kwargs):
     # see https://matplotlib.org/stable/api/matplotlib_configuration_api.html
     
     plt.rc('figure', titlesize=FONTSIZE['BB'], figsize=FIGSIZE)  # fontsize of the figure    
-    plt.rc('axes',   titlesize=FONTSIZE['BB'], labelsize=FONTSIZE['S'])    # fontsize of the axes (created with subplots)
+    plt.rc('axes',   titlesize=FONTSIZE['BB'], labelsize=FONTSIZE['M'])    # fontsize of the axes (created with subplots)
     plt.rc('legend', fontsize=FONTSIZE['S'])    # legend fontsize
 
-    # plt.rcParams.update({
-    #     "text.usetex": True,
-    #     "font.family": ["Helvetica"],
-    #     #"font.sans-serif": ["Helvetica"]
-    # })
-    # plt.rcParams.update({
-    #     "text.usetex": True,
-    #     "font.family": "Serif",
-    #     "font.serif": ["Palatino"],
-    # })
-    
+    plt.rcParams.update({
+        "text.usetex": True,
+        "font.family": 'serif',
+        "font.serif": 'cm',
+    })
+
     # TODO: find a way to initialize plt.tight_layout() that holds for every plot
         
     #plt.rc('font', size=SMALL_SIZE)          # controls default text sizes
@@ -70,7 +66,8 @@ def plot(*args, axis=None, scalex=True, scaley=True, data=None, **kwargs):
    
 def errorbar(
     x, y, yerr=None, xerr=None, fmt='', axis=None, ecolor=None,
-    elinewidth=ELINEWIDTH, capsize=CAPSIZE, barsabove=False, lolims=False,
+    markersize=MARKERSIZE, elinewidth=ELINEWIDTH, capsize=CAPSIZE,
+    barsabove=False, lolims=False,
     uplims=False, xlolims=False, xuplims=False, errorevery=1,
     capthick=None, *, data=None, **kwargs):
     
@@ -85,12 +82,19 @@ def errorbar(
 
     out = axis.errorbar(
         x, y, yerr=yerr, xerr=xerr, fmt=fmt, ecolor=ecolor,
-        elinewidth=elinewidth, capsize=capsize, barsabove=barsabove, lolims=lolims,
+        markersize=markersize, elinewidth=elinewidth, capsize=capsize,
+        barsabove=barsabove, lolims=lolims,
         uplims=uplims, xlolims=xlolims, xuplims=xuplims, errorevery=errorevery,
         capthick=capthick, data=data, **kwargs
     )
     return out
 
+def fill_error_band(x, y, axis=None, *args, **kwargs):
+    y1 = y.mean-y.err
+    y2 = y.mean+y.err
+    if axis is None:
+        axis = plt   
+    return axis.fill_between(x, y1, y2, *args, **kwargs)
 
 class _MyAxes(Axes):
 
@@ -109,17 +113,22 @@ class _MyAxes(Axes):
 
     def errorbar(
         self, x, y, yerr=None, xerr=None, fmt='', ecolor=None,
-        elinewidth=ELINEWIDTH, capsize=CAPSIZE, barsabove=False, lolims=False,
+        markersize=MARKERSIZE, elinewidth=ELINEWIDTH, capsize=CAPSIZE,
+        barsabove=False, lolims=False,
         uplims=False, xlolims=False, xuplims=False, errorevery=1,
         capthick=None, *, data=None, **kwargs):
         
         out = errorbar(
             x, y, yerr=yerr, xerr=xerr, fmt=fmt, axis=self.ax, ecolor=ecolor,
-            elinewidth=elinewidth, capsize=capsize, barsabove=barsabove, lolims=lolims,
+            markersize=markersize, elinewidth=elinewidth, capsize=capsize,
+            barsabove=barsabove, lolims=lolims,
             uplims=uplims, xlolims=xlolims, xuplims=xuplims, errorevery=errorevery,
             capthick=capthick, data=data, **kwargs
         )
         return out   
+    
+    def fill_error_band(self, x, y, *args, **kwargs):
+        return fill_error_band(x, y, axis=self.ax, *args, **kwargs)
     
 # INITIALIZATION FOR AXES
 def init_axes(nrows=1, ncols=1, figsize=FIGSIZE, *args, **kwargs):

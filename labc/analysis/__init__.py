@@ -61,6 +61,7 @@ class Analysis:
         self.tsrc_list = tsrc_list
         self.config_list = config_list
         self.statsType = statsType
+        self._register_ensemble = {}
         
         # dictionary for global variables of the analysis
         
@@ -132,16 +133,33 @@ class Analysis:
     #             raise _AlreadyDefined(
     #                 message = f"Database function '{func}' already defined."
     #             )
-    
-    def add_database_analysis(self, database):
-        self.get = database
-        self.get.set_stats(self.statsType, self.tsrc_list)
 
-    def add_database_gauge(self, database):
-        self.db_gauge = database
+
+
+    def add_ensemble(self, ensemble):
+        self._register_ensemble[ensemble.ID] = ensemble
+        setattr(self, ensemble.ID, ensemble)
+        
+    def ensemble(self, ensembleID):
+        return self._register_ensemble[ensembleID]
+
+    def data(self, ensembleID: str):
+        att = getattr(self, ensembleID)
+        att2 = getattr(att, 'data')
+        return att2
+
+    def add_database_files(self, database):
+        self.files = database
     
-    def add_database_data(self, database):
-        self.db_data = database
+    # def add_database_analysis(self, database):
+    #     self.get = database
+    #     self.get.set_stats(self.statsType, self.tsrc_list)
+
+    # def add_database_gauge(self, database):
+    #     self.db_gauge = database
+    
+    # def add_database_data(self, database):
+    #     self.db_data = database
 
 
 
