@@ -62,6 +62,7 @@ class Analysis:
         self.config_list = config_list
         self.statsType = statsType
         self._register_ensemble = {}
+        self.globals = {}
         
         # dictionary for global variables of the analysis
         
@@ -88,6 +89,9 @@ class Analysis:
     def set_globals(self, globs):
         self.globs = globs
     
+    def add_global(self, key, value):
+        self.globals[key] = value
+
     # def copy(self):
     #     new = type(self)(self.statsType, self.tsrc_list, self.config_list)
     #     new.globals = self.globals
