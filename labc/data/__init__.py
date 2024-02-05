@@ -455,8 +455,6 @@ class DataErr(DataBins):
         np.random.seed(self.seed)
 
         if statsType is None:
-            if num_bins is None:
-                num_bins = self.num_bins
             raw_bins = np.random.multivariate_normal(
                 self.mean, self.cov, num_bins
             )
@@ -480,10 +478,7 @@ class DataErr(DataBins):
         if statsType is None:
             if num_bins==None:
                 num_bins = self.num_bins
-            else:
-                out = self._resample(num_bins, statsType)
-        else:
-            out = self._resample(num_bins, statsType)
+        out = self._resample(num_bins, statsType)
         out = np.reshape(out, (len(out), len(self.mean)))
         return out
 
