@@ -1,5 +1,5 @@
 import numpy as np
-from ..data  import DataStats
+from ..data  import DataStats, DataErr
 from matplotlib.axes import Axes
 import matplotlib.pyplot as plt
 from matplotlib import rc
@@ -71,10 +71,10 @@ def errorbar(
     uplims=False, xlolims=False, xuplims=False, errorevery=1,
     capthick=None, *, data=None, **kwargs):
     
-    if isinstance(x, DataStats) and xerr is None:
+    if isinstance(x, (DataStats, DataErr)) and xerr is None:
         xerr = x.err
         x = x.mean
-    if isinstance(y, DataStats) and yerr is None:
+    if isinstance(y, (DataStats, DataErr)) and yerr is None:
         yerr = y.err
         y = y.mean  
     if axis is None:

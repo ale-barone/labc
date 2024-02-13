@@ -148,9 +148,31 @@ def fit_cosh(param, t, T):
 # Class Fitter
 ################################################################################
 
+def svd_inv(cov, cut_back=None, set_equal=True):
+    U, s, VT = np.linalg.svd(cov, full_matrices=True, hermitian=True)
+    # cov = U@np.diag(s)@VT
+
+    if cut_back==(None or 0):
+        inv = VT.T@np.diag(1/s)@U.T
+    else:
+        if set_equal==True:
+            s_last = s[-cut_back]
+            s[-cut_back:] = s_last 
+            sinv = 1/s
+            inv = (VT.T*sinv)@U.T
+        elif set_equal==False:
+            # sinv = 1/s[-cut_back:]
+            # inv = (VT.T[-cut_back:]*sinv)@U[-cut_back:,:]
+            s[-cut_back:] = 0
+            _cov = U@np.diag(s)@VT
+            inv = np.linalg.inv(_cov)
+        
+    return inv
+
+
 class Fitter:
 
-    def __init__(self, x, y, fit_func=None,
+    def __init__(self, x, y, fit_func,
                  *fit_func_args, **fit_func_kwargs):
         self.x = x
         if isinstance(y, list):
@@ -162,7 +184,7 @@ class Fitter:
             self.statsType = y.statsType
             self.num_bins = y.num_bins()
 
-        if fit_func is not None:
+        if isinstance(fit_func, str):
             libfunc = getattr(lib, fit_func)
             self.func_param = libfunc.PARAM
             self.funcstr = libfunc.STRING
@@ -173,6 +195,7 @@ class Fitter:
             self._fit_func = None
         
 
+        self.cov_fit = None
         # # initialize null priors
         # def null_prior(*args):
         #     return 0
@@ -220,28 +243,54 @@ class Fitter:
         #             out = np.append(out, prior)   
         # self.prior_func = prior_func
     
+    # def _cov(self, data, correlated, offdiagdamp=1):
+    #     if self.cov_fit is None:
+    #         if correlated==True:
+    #             cov = data.cov
+    #             N = len(cov)
+    #             cov = (1-offdiagdamp)*np.diag(np.diag(cov)) + np.full((N,N), offdiagdamp)*cov
+    #         elif correlated==False:
+    #             cov = np.diag(data.err**2)
+    #     else:
+    #         cov = self.cov_fit
+    #     return cov
+
+    # def _cov_inv(self, data, correlated, offdiagdamp=1):
+    #     cov = self._cov(data, correlated, offdiagdamp)
+    #     cov_inv = np.linalg.inv(cov)
+    #     return cov_inv
+        
+    # def _cov_inv_sqrt(self, data, correlated, offdiagdamp=1):
+    #     cov_inv = self._cov_inv(data, correlated, offdiagdamp)
+    #     cov_inv_sqrt = cholesky(cov_inv)
+    #     return cov_inv_sqrt
+        
     def _cov(self, data, correlated, offdiagdamp=1):
-        if correlated==True:
-            cov = self.statsType.cov(data)
-            N = len(cov)
-            cov = (1-offdiagdamp)*np.diag(np.diag(cov)) + np.full((N,N), offdiagdamp)*cov
-        elif correlated==False:
-            cov = np.diag(data.err**2)
+        if self.cov_fit is None:
+            if correlated==True:
+                cov = data.cov
+                N = len(cov)
+                cov = (1-offdiagdamp)*np.diag(np.diag(cov)) + np.full((N,N), offdiagdamp)*cov
+            elif correlated==False:
+                cov = np.diag(data.err**2)
+        else:
+            cov = self.cov_fit
         return cov
 
-    def _cov_inv(self, data, correlated, offdiagdamp=1):
-        cov = self._cov(data, correlated, offdiagdamp)
-        cov_inv = np.linalg.inv(cov)
+    def _cov_inv(self, cov, cut_back=None, set_equal=True):
+        if cut_back is not None:
+            cov_inv = svd_inv(cov, cut_back=cut_back, set_equal=set_equal)
+        else:
+            cov_inv = np.linalg.inv(cov)
         return cov_inv
         
-    def _cov_inv_sqrt(self, data, correlated, offdiagdamp=1):
-        cov_inv = self._cov_inv(data, correlated, offdiagdamp)
+    def _cov_inv_sqrt(self, cov_inv):
         cov_inv_sqrt = cholesky(cov_inv)
         return cov_inv_sqrt
          
     def _residual(self, x, y, cov_inv_sqrt):
         def func(param):
-            fit_func = self.fit_func(param, x)
+            fit_func = self.fit_func(param, x).flatten() # FIXME check if it's fine always
             out = np.dot(cov_inv_sqrt, fit_func-y)
             if self.prior is not None:
                 prior_func = np.array([])
@@ -325,7 +374,14 @@ class Fitter:
     def _fitter(self, x, y, guess, cov_inv_sqrt):
         res = self._residual(x, y, cov_inv_sqrt)
         #sol = leastsq(res, guess, maxfev=2000, ftol=1e-10, xtol=1e-10, full_output=True)
-        sol = least_squares(res, guess)
+        #sol = least_squares(res, guess)#, jac='3-point')
+
+        sol = least_squares(
+            fun=res, x0=guess,
+            xtol=1e-10, gtol=1e-10, ftol=1e-10,
+            max_nfev=1000,
+        )
+
         return sol
 
     @dataStats_args
@@ -334,16 +390,26 @@ class Fitter:
         return sol.x
 
     
-    def eval(self, fit_points, guess, correlated, offdiagdamp=1):
+    def eval(self, fit_points, guess, *,
+             cov=None, correlated=True, offdiagdamp=1, cut_back=None, set_equal=True):
+        
+        # set fit range
         x = self.x[fit_points]
         y = self.y[fit_points]
         self.fit_points = x, y
 
+        # parse the guess
         guess = self._parse_guess(guess)
-        cov_inv_sqrt = self._cov_inv_sqrt(y, correlated, offdiagdamp)
+
+        # set covariance and Cholesky decomposition
+        if cov is None:
+            cov = self._cov(y, correlated, offdiagdamp)   
+        cov_inv = self._cov_inv(cov, cut_back=cut_back, set_equal=set_equal)
+        cov_inv_sqrt = self._cov_inv_sqrt(cov_inv)
+        
         #prior = self._collect_prior_data()
 
-        # deal with prior_data
+        # fit
         fit = self._fitter(x, y.mean, guess, cov_inv_sqrt)
         sol = self._eval(x, y, guess, cov_inv_sqrt)
         out = self._collect_output(fit, sol)

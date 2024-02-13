@@ -86,11 +86,15 @@ class Analysis:
         # self.objdatabase = database()
         # self.obj = database()
     
-    def set_globals(self, globs):
-        self.globs = globs
+    # def set_globals(self, globs):
+    #     self.globs = globs
     
     def add_global(self, key, value):
         self.globals[key] = value
+<<<<<<< HEAD
+=======
+        
+>>>>>>> develop/nucleon/isoscalar
 
     # def copy(self):
     #     new = type(self)(self.statsType, self.tsrc_list, self.config_list)
@@ -146,6 +150,9 @@ class Analysis:
         
     def ensemble(self, ensembleID):
         return self._register_ensemble[ensembleID]
+
+    def list_ensembles(self):
+        return list(self._register_ensemble.keys())
 
     def data(self, ensembleID: str):
         att = getattr(self, ensembleID)
