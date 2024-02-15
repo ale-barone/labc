@@ -186,13 +186,13 @@ class Fitter:
 
         if isinstance(fit_func, str):
             libfunc = getattr(lib, fit_func)
-            self.func_param = libfunc.PARAM
-            self.funcstr = libfunc.STRING
-            def func(param, x):
-                return libfunc()(param, x, *fit_func_args, **fit_func_kwargs)
-            self._fit_func = func
         else:
-            self._fit_func = None
+            libfunc = fit_func
+        self.func_param = libfunc.PARAM
+        self.funcstr = libfunc.STRING
+        def func(param, x):
+            return libfunc()(param, x, *fit_func_args, **fit_func_kwargs)
+        self._fit_func = func
         
 
         self.cov_fit = None
@@ -390,12 +390,18 @@ class Fitter:
         return sol.x
 
     
-    def eval(self, fit_points, guess, *,
+    def eval(self, guess, fit_points=None, *,
              cov=None, correlated=True, offdiagdamp=1, cut_back=None, set_equal=True):
         
         # set fit range
-        x = self.x[fit_points]
-        y = self.y[fit_points]
+        if fit_points is None:
+            x = self.x
+            y = self.y #[fit_points]
+        else:
+            x = self.x[fit_points]
+            y = self.y[fit_points]
+
+
         self.fit_points = x, y
 
         # parse the guess
