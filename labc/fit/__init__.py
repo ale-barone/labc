@@ -148,25 +148,45 @@ def fit_cosh(param, t, T):
 # Class Fitter
 ################################################################################
 
+# def svd_inv(cov, cut_back=None, set_equal=True):
+#     U, s, VT = np.linalg.svd(cov, full_matrices=True, hermitian=True)
+#     # cov = U@np.diag(s)@VT
+
+#     if cut_back==(None or 0):
+#         inv = VT.T@np.diag(1/s)@U.T
+#     else:
+#         if set_equal==True:
+#             s_last = s[-cut_back]
+#             s[-cut_back:] = s_last 
+#             sinv = 1/s
+#             inv = (VT.T*sinv)@U.T
+#         elif set_equal==False:
+#             # sinv = 1/s[-cut_back:]
+#             # inv = (VT.T[-cut_back:]*sinv)@U[-cut_back:,:]
+#             s[-cut_back:] = 0
+#             _cov = U@np.diag(s)@VT
+#             inv = np.linalg.inv(_cov)
+        
+#     return inv
+
+
+
 def svd_inv(cov, cut_back=None, set_equal=True):
     U, s, VT = np.linalg.svd(cov, full_matrices=True, hermitian=True)
     # cov = U@np.diag(s)@VT
 
-    if cut_back==(None or 0):
-        inv = VT.T@np.diag(1/s)@U.T
+    rcond = np.linalg.cond(cov)
+
+    if (cut_back is None) or (cut_back>rcond):
+        sinv = 1/s
+        inv = (VT.T*sinv)@U.T
     else:
-        if set_equal==True:
-            s_last = s[-cut_back]
-            s[-cut_back:] = s_last 
-            sinv = 1/s
-            inv = (VT.T*sinv)@U.T
-        elif set_equal==False:
-            # sinv = 1/s[-cut_back:]
-            # inv = (VT.T[-cut_back:]*sinv)@U[-cut_back:,:]
-            s[-cut_back:] = 0
-            _cov = U@np.diag(s)@VT
-            inv = np.linalg.inv(_cov)
-        
+        indx = np.where(s[0]/s > cut_back)[0][0]
+        s_last = s[indx]
+        s[indx:] = s_last 
+        sinv = 1/s
+        inv = (VT.T*sinv)@U.T
+
     return inv
 
 
