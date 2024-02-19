@@ -1,7 +1,7 @@
 import numpy as np
 import scipy as sci
 import scipy.optimize as opt
-from scipy.optimize import least_squares, leastsq
+from scipy.optimize import least_squares, leastsq, curve_fit
 from scipy.linalg import cholesky
 import pandas as pd
 from .. import data as dM
@@ -435,19 +435,32 @@ class Fitter:
         out = self._collect_output(fit, sol)
         return out
     
-    # this must just be a wrapper around least squares
-    # def eval_mean(self, fit_range, guess, correlated):
+    # def eval_mean(self, fit_range, guess, *,
+    #          cov=None, correlated=True, offdiagdamp=1):
+        
     #     x = self.x[fit_range]
     #     y = self.y[fit_range]
-    #     guess = self._parse_guess(guess)
-    #     cov_inv_sqrt = self._cov_inv_sqrt(y, correlated)
-
-    #     prior = self._collect_prior_data()
-    #     res = self._residual(x, y.mean, cov_inv_sqrt, prior.mean)
+    #     # set covariance
+    #     if cov is None:
+    #         cov = self._cov(y, correlated, offdiagdamp)   
         
-    #     sol = leastsq(res, guess, maxfev=2000, ftol=1e-10, xtol=1e-10, full_output=True)
-    #     pv, chisq_Ndof, Ndof = chi_sq(sol)
-    #     return sol
+    #     # parse the guess
+    #     guess = self._parse_guess(guess)
+
+    #     # redefine fit_func to match curve_fit conventions
+    #     def fit_func(x, *param):
+    #         return self.fit_func(param, x).flatten()
+
+    #     fit = curve_fit(fit_func, x, y.mean, sigma=cov, p0=guess,
+    #             absolute_sigma=True, check_finite=True, method='trf',
+    #             ftol=1e-08,xtol=1e-10,gtol=1e-10, full_output=True)
+        
+    #     fit_mean = fit[0]
+    #     fit_cov = fit[1]
+    #     fit_out = dM.DataErr(fit_mean, fit_cov)
+    #     fit_out = fit_out.to_dataStats(None, self.statsType)
+
+    #     return fit_out
 
     # # this must scan ranges and provide a report (pandas dataframe)
     # def _scan(self, fit_range: list, guess: list, *, correlated, min_num_points=None, max_num_points=None, thin=1):
