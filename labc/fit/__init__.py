@@ -411,7 +411,7 @@ class Fitter:
 
     
     def eval(self, fit_points, guess, *,
-             cov=None, correlated=True, offdiagdamp=1, cut_back=None, set_equal=True):
+             cov_inv=None, cov=None, correlated=True, offdiagdamp=1, cut_back=None, set_equal=True):
         
         # set fit range
         x = self.x[fit_points]
@@ -422,10 +422,12 @@ class Fitter:
         guess = self._parse_guess(guess)
 
         # set covariance and Cholesky decomposition
-        if cov is None:
-            cov = self._cov(y, correlated, offdiagdamp)   
-        cov_inv = self._cov_inv(cov, cut_back=cut_back, set_equal=set_equal)
+        if cov_inv is None:
+            if cov is None:
+                cov = self._cov(y, correlated, offdiagdamp)   
+            cov_inv = self._cov_inv(cov, cut_back=cut_back, set_equal=set_equal)
         cov_inv_sqrt = self._cov_inv_sqrt(cov_inv)
+
         
         #prior = self._collect_prior_data()
 
@@ -435,7 +437,7 @@ class Fitter:
         out = self._collect_output(fit, sol)
         return out
     
-    # def eval_mean(self, fit_range, guess, *,
+    # def eval_gauss(self, fit_range, guess, *,
     #          cov=None, correlated=True, offdiagdamp=1):
         
     #     x = self.x[fit_range]
