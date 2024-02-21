@@ -1,7 +1,7 @@
 import numpy as np
 import scipy as sci
 import scipy.optimize as opt
-from scipy.optimize import least_squares, leastsq
+from scipy.optimize import least_squares, leastsq, curve_fit
 from scipy.linalg import cholesky
 import pandas as pd
 from .. import data as dM
@@ -141,7 +141,60 @@ def fit_cosh(param, t, T):
 # the results (including cov, priors,...)
 # and do the relevant stuff (chisq, pval...) and pretty print
 
-#class FitResult:
+class FitResult:
+
+    def __init__(self, fit_output, param, param_map, fitted_param):
+        self.fit = fit_output
+        self.param = param
+        self.param_dict = param_map
+
+        self.result_full = self._get_result_full(fitted_param)
+        self.result = self._get_result(self.result_full)
+        self.goodness = self._collect_fit_quality(fit_output)
+
+    def _collect_fit_quality(self, fit):
+        pv, chisq_Ndof, Ndof = chi_sq(fit)
+        out = {
+            'pvalue': f'{pv:.3f}',
+            'chisq/Ndof': f'{chisq_Ndof:.3f}',
+            'Ndof': Ndof, 
+        }
+        return out
+
+
+    def _get_result_full(self, fitted_param):
+        param_dict_flatten = self._flatten_param_dict(self.param_dict)
+        out = {param_dict_flatten[i]: res 
+               for i, res in enumerate(fitted_param)}
+        return out
+    
+    def _flatten_param_dict(self, param_dict):
+        param_list = []
+        for k, v in param_dict.items():
+            if isinstance(v, list):
+                for l in v:
+                    param_list.append(l)
+            else:
+                param_list.append(v)
+        
+        out = {i: par for i, par in enumerate(param_list)}
+        return out
+
+    def _get_result(self, full_result_dict):
+        out = {}
+
+        for param in self.param:
+            param_list = [p for p in list(full_result_dict.keys()) if param in p]
+            out[param] = dM.merge([full_result_dict[pl] for pl in param_list])
+        return out
+        # for param, param_list in self.param_dict.items():
+        #     if isinstance(param_list, list):
+        #         out[param] = dM.merge([full_result_dict[pl] for pl in param_list])
+        #     else:
+        #         out[param] = full_result_dict[param_list]
+        # return out
+
+
 
 
 ################################################################################
@@ -208,30 +261,13 @@ class Fitter:
             libfunc = getattr(lib, fit_func)
         else:
             libfunc = fit_func
-        self.func_param = libfunc.PARAM
+        self.func_param = list(libfunc.PARAM.values())
         self.funcstr = libfunc.STRING
         def func(param, x):
             return libfunc()(param, x, *fit_func_args, **fit_func_kwargs)
         self._fit_func = func
         
-
-        self.cov_fit = None
-        # # initialize null priors
-        # def null_prior(*args):
-        #     return 0
-        # null_prior_data = 0*y #dMzeros(1, self.statsType)
-        
-        # self.prior = {v: null_prior for v in self.param.values()}
-        # self.prior_resampling = None
-        # self.prior_data = {v: null_prior_data[vi] for vi, v in enumerate(self.param.values())}
-
         self.prior = None
-
-        # print('\n_________________________________________')
-        # print('| --- Initialise fitter for function ')
-        # print('|  ' + self.funcstr)
-        # print('|')
-        # print('_______________________________\n')
     
     @property
     def fit_func(self):
@@ -262,39 +298,15 @@ class Fitter:
         #             prior = prior[v](param[k])
         #             out = np.append(out, prior)   
         # self.prior_func = prior_func
-    
-    # def _cov(self, data, correlated, offdiagdamp=1):
-    #     if self.cov_fit is None:
-    #         if correlated==True:
-    #             cov = data.cov
-    #             N = len(cov)
-    #             cov = (1-offdiagdamp)*np.diag(np.diag(cov)) + np.full((N,N), offdiagdamp)*cov
-    #         elif correlated==False:
-    #             cov = np.diag(data.err**2)
-    #     else:
-    #         cov = self.cov_fit
-    #     return cov
 
-    # def _cov_inv(self, data, correlated, offdiagdamp=1):
-    #     cov = self._cov(data, correlated, offdiagdamp)
-    #     cov_inv = np.linalg.inv(cov)
-    #     return cov_inv
-        
-    # def _cov_inv_sqrt(self, data, correlated, offdiagdamp=1):
-    #     cov_inv = self._cov_inv(data, correlated, offdiagdamp)
-    #     cov_inv_sqrt = cholesky(cov_inv)
-    #     return cov_inv_sqrt
         
     def _cov(self, data, correlated, offdiagdamp=1):
-        if self.cov_fit is None:
-            if correlated==True:
-                cov = data.cov
-                N = len(cov)
-                cov = (1-offdiagdamp)*np.diag(np.diag(cov)) + np.full((N,N), offdiagdamp)*cov
-            elif correlated==False:
-                cov = np.diag(data.err**2)
-        else:
-            cov = self.cov_fit
+        if correlated==True:
+            cov = data.cov
+            N = len(cov)
+            cov = (1-offdiagdamp)*np.diag(np.diag(cov)) + np.full((N,N), offdiagdamp)*cov
+        elif correlated==False:
+            cov = np.diag(data.err**2)
         return cov
 
     def _cov_inv(self, cov, cut_back=None, set_equal=True):
@@ -303,10 +315,6 @@ class Fitter:
         else:
             cov_inv = np.linalg.inv(cov)
         return cov_inv
-        
-    def _cov_inv_sqrt(self, cov_inv):
-        cov_inv_sqrt = cholesky(cov_inv)
-        return cov_inv_sqrt
          
     def _residual(self, x, y, cov_inv_sqrt):
         def func(param):
@@ -324,48 +332,31 @@ class Fitter:
 
     def _parse_guess(self, guess_dict):
         # FIXME put here the collection of array param (or dict param)
-        assert(set(guess_dict.keys())==set(self.func_param.values()))
-        param = {}
+        assert(set(guess_dict.keys())==set(self.func_param))
+        param_dict = {}
 
-        param_keys = list(self.func_param.values())
-        param_values = list(guess_dict.values())
-
-        out = []
-        counter = 0
-        for p in param_keys:
-            pv = guess_dict[p]
-            if isinstance(pv, dict):
-                for idxpk, pk in enumerate(pv.keys()):
-                    param[counter] = f'{p}{pk}'
-                    out.append(list(pv.values())[idxpk])
-                    counter += 1
+        out_guess = []
+        for idxp, param in enumerate(self.func_param):
+            guess_param = guess_dict[param] 
+            if isinstance(guess_param, dict):
+                guess_param_list = []
+                for guess_param_k, guess_param_v in guess_param.items():
+                    guess_param_list.append(f'{param}{guess_param_k}')
+                    out_guess.append(guess_param_v)
+                param_dict[idxp] = guess_param_list 
+            elif isinstance(guess_param, (list, np.ndarray)):
+                guess_param_list = []
+                for idxg, guess_param_v in enumerate(guess_param):
+                    guess_param_list.append(f'{param}_{idxg}')
+                    out_guess.append(guess_param_v)
+                param_dict[idxp] = guess_param_list
             else:
-                param[counter] = f'{p}'
-                out.append(param_values[counter])
-                counter += 1
+                param_dict[idxp] = param 
+                out_guess.append(guess_param) 
+        out_guess = np.asarray(out_guess)
+        
+        return param_dict, out_guess
 
-        self.param = param
-        self.num_param = len(param)
-        self.guess = out
-
-        return out
-    
-    def _collect_fit_param(self, fitted_param):
-        out = {self.param[i]: fitted_param[i] for i in range(len(self.param))}
-        return out
-    
-    def _collect_fit_param_str(self, fitted_param):
-        out = {self.param[i]: str(fitted_param[i]) for i in range(len(self.param))}
-        return out
-    
-    def _collect_fit_quality(self, fit):
-        pv, chisq_Ndof, Ndof = chi_sq(fit)
-        out = {
-            'pvalue': f'{pv:.3f}',
-            'chisq/Ndof': f'{chisq_Ndof:.3f}',
-            'Ndof': Ndof, 
-        }
-        return out
 
     def _collect_prior_data(self):
         prior_data = []
@@ -373,23 +364,6 @@ class Fitter:
             prior_data.append(self.prior_data[v])
         prior_data = [self.prior_data[i] for i in range(self.num_param)]
         return dM.merge(prior_data)
-
-    def _collect_output(self, fit, fitted_param):
-        quality = self._collect_fit_quality(fit)
-        param = self._collect_fit_param(fitted_param)
-        out = {**quality, **param}
-        return out
-
-    # def _collect_fit_results(self, fit):
-    #     sol = {self.param[i]: f'{fit[0][i]:.4f}' for i in range(len(fit[0]))}
-    #     pv, chisq_Ndof, Ndof = chi_sq(fit)
-    #     summary = {
-    #         'pvalue': f'{pv:.3f}',
-    #         'chisq/Ndof': f'{chisq_Ndof:.3f}',
-    #         'Ndof': Ndof, 
-    #         'fit_param': sol
-    #     }
-    #     return summary, sol
 
     def _fitter(self, x, y, guess, cov_inv_sqrt):
         res = self._residual(x, y, cov_inv_sqrt)
@@ -410,8 +384,8 @@ class Fitter:
         return sol.x
 
     
-    def eval(self, guess, fit_points=None, *,
-             cov=None, correlated=True, offdiagdamp=1, cut_back=None, set_equal=True):
+    def eval(self, fit_points, guess, *,
+             cov_inv=None, cov=None, correlated=True, offdiagdamp=1, cut_back=None, set_equal=True):
         
         # set fit range
         if fit_points is None:
@@ -425,35 +399,53 @@ class Fitter:
         self.fit_points = x, y
 
         # parse the guess
-        guess = self._parse_guess(guess)
+        param_dict, guess = self._parse_guess(guess)
+        #param_dict = self._flatten_param_dict(_param_dict)
 
         # set covariance and Cholesky decomposition
-        if cov is None:
-            cov = self._cov(y, correlated, offdiagdamp)   
-        cov_inv = self._cov_inv(cov, cut_back=cut_back, set_equal=set_equal)
-        cov_inv_sqrt = self._cov_inv_sqrt(cov_inv)
+        if cov_inv is None:
+            if cov is None:
+                cov = self._cov(y, correlated, offdiagdamp)   
+            cov_inv = self._cov_inv(cov, cut_back=cut_back, set_equal=set_equal)
+        cov_inv_sqrt = cholesky(cov_inv)
+
         
         #prior = self._collect_prior_data()
 
         # fit
         fit = self._fitter(x, y.mean, guess, cov_inv_sqrt)
         sol = self._eval(x, y, guess, cov_inv_sqrt)
-        out = self._collect_output(fit, sol)
-        return out
+        #out = self._collect_output(fit, param_dict, sol)
+
+        fitres = FitResult(fit, self.func_param, param_dict, sol)
+        return fitres #out
     
-    # this must just be a wrapper around least squares
-    # def eval_mean(self, fit_range, guess, correlated):
+    # def eval_gauss(self, fit_range, guess, *,
+    #          cov=None, correlated=True, offdiagdamp=1):
+        
     #     x = self.x[fit_range]
     #     y = self.y[fit_range]
-    #     guess = self._parse_guess(guess)
-    #     cov_inv_sqrt = self._cov_inv_sqrt(y, correlated)
-
-    #     prior = self._collect_prior_data()
-    #     res = self._residual(x, y.mean, cov_inv_sqrt, prior.mean)
+    #     # set covariance
+    #     if cov is None:
+    #         cov = self._cov(y, correlated, offdiagdamp)   
         
-    #     sol = leastsq(res, guess, maxfev=2000, ftol=1e-10, xtol=1e-10, full_output=True)
-    #     pv, chisq_Ndof, Ndof = chi_sq(sol)
-    #     return sol
+    #     # parse the guess
+    #     guess = self._parse_guess(guess)
+
+    #     # redefine fit_func to match curve_fit conventions
+    #     def fit_func(x, *param):
+    #         return self.fit_func(param, x).flatten()
+
+    #     fit = curve_fit(fit_func, x, y.mean, sigma=cov, p0=guess,
+    #             absolute_sigma=True, check_finite=True, method='trf',
+    #             ftol=1e-08,xtol=1e-10,gtol=1e-10, full_output=True)
+        
+    #     fit_mean = fit[0]
+    #     fit_cov = fit[1]
+    #     fit_out = dM.DataErr(fit_mean, fit_cov)
+    #     fit_out = fit_out.to_dataStats(None, self.statsType)
+
+    #     return fit_out
 
     # # this must scan ranges and provide a report (pandas dataframe)
     # def _scan(self, fit_range: list, guess: list, *, correlated, min_num_points=None, max_num_points=None, thin=1):
