@@ -141,7 +141,45 @@ def fit_cosh(param, t, T):
 # the results (including cov, priors,...)
 # and do the relevant stuff (chisq, pval...) and pretty print
 
-#class FitResult:
+class FitResult:
+
+    def __init__(self, fit_output, param, param_dict_full, fitted_param):
+        self.fit = fit_output
+        self.param = param
+        self.param_dict_full = param_dict_full
+        self.param_full = list(param_dict_full.keys())
+
+        self.result_full = self._get_result_full(fitted_param)
+        self.result = {
+            self.param[i]: fitted_param[i] for i in range(len(self.param))}
+        self.goodness = self._collect_fit_quality(fit_output)
+
+    def _collect_fit_quality(self, fit):
+        pv, chisq_Ndof, Ndof = chi_sq(fit)
+        out = {
+            'pvalue': f'{pv:.3f}',
+            'chisq/Ndof': f'{chisq_Ndof:.3f}',
+            'Ndof': Ndof, 
+        }
+        return out
+
+    def _collect_fit_param(self, fitted_param):
+        out = {self.param_full[i]: fitted_param[i] for i in range(len(self.param))}
+        return out
+
+    def _get_result_full(self, fitted_param):
+        out = {self.param_dict_full[i]: res 
+               for i, res in enumerate(fitted_param)}
+        return out
+
+    def _get_result(self, fitted_param):
+        [a for a in list(tmp.values()) if 'a' in a]
+
+        param_list = []
+        for p in self.param:
+            param_list = {}
+
+
 
 
 ################################################################################
@@ -206,7 +244,7 @@ class Fitter:
 
         if isinstance(fit_func, str):
             libfunc = getattr(lib, fit_func)
-            self.func_param = libfunc.PARAM
+            self.func_param = list(libfunc.PARAM.values())
             self.funcstr = libfunc.STRING
             def func(param, x):
                 return libfunc()(param, x, *fit_func_args, **fit_func_kwargs)
@@ -324,39 +362,45 @@ class Fitter:
 
     def _parse_guess(self, guess_dict):
         # FIXME put here the collection of array param (or dict param)
-        assert(set(guess_dict.keys())==set(self.func_param.values()))
-        param = {}
+        assert(set(guess_dict.keys())==set(self.func_param))
+        param_dict = {}
 
-        param_keys = list(self.func_param.values())
-        param_values = list(guess_dict.values())
-
-        out = []
-        counter = 0
-        for p in param_keys:
-            pv = guess_dict[p]
-            if isinstance(pv, dict):
-                for idxpk, pk in enumerate(pv.keys()):
-                    param[counter] = f'{p}{pk}'
-                    out.append(list(pv.values())[idxpk])
-                    counter += 1
+        out_guess = []
+        for idxp, param in enumerate(self.func_param):
+            guess_param = guess_dict[param] 
+            if isinstance(guess_param, dict):
+                guess_param_list = []
+                for guess_param_k, guess_param_v in guess_param.items():
+                    guess_param_list.append(f'{param}{guess_param_k}')
+                    out_guess.append(guess_param_v)
+                param_dict[idxp] = guess_param_list 
             else:
-                param[counter] = f'{p}'
-                out.append(param_values[counter])
-                counter += 1
+                param_dict[idxp] = param 
+                out_guess.append(guess_param) 
+        out_guess = np.asarray(out_guess)
+        
+        return param_dict, out_guess
+    
+    def _flatten_param_dict(self, param_dict):
+        param_list = []
+        for k, v in param_dict.items():
+            if isinstance(v, list):
+                for l in v:
+                    param_list.append(l)
+            else:
+                param_list.append(v)
+        
+        out = {i: par for i, par in enumerate(param_list)}
+        return out
 
-        self.param = param
-        self.num_param = len(param)
-        self.guess = out
-
+    
+    def _collect_fit_param(self, param_dict, fitted_param):
+        out = {param_dict[i]: fitted_param[i] for i in range(len(param_dict))}
         return out
     
-    def _collect_fit_param(self, fitted_param):
-        out = {self.param[i]: fitted_param[i] for i in range(len(self.param))}
-        return out
-    
-    def _collect_fit_param_str(self, fitted_param):
-        out = {self.param[i]: str(fitted_param[i]) for i in range(len(self.param))}
-        return out
+    # def _collect_fit_param_str(self, fitted_param):
+    #     out = {self.param[i]: str(fitted_param[i]) for i in range(len(self.param))}
+    #     return out
     
     def _collect_fit_quality(self, fit):
         pv, chisq_Ndof, Ndof = chi_sq(fit)
@@ -374,9 +418,9 @@ class Fitter:
         prior_data = [self.prior_data[i] for i in range(self.num_param)]
         return dM.merge(prior_data)
 
-    def _collect_output(self, fit, fitted_param):
+    def _collect_output(self, fit, param_dict, fitted_param):
         quality = self._collect_fit_quality(fit)
-        param = self._collect_fit_param(fitted_param)
+        param = self._collect_fit_param(param_dict, fitted_param)
         out = {**quality, **param}
         return out
 
@@ -419,7 +463,8 @@ class Fitter:
         self.fit_points = x, y
 
         # parse the guess
-        guess = self._parse_guess(guess)
+        _param_dict, guess = self._parse_guess(guess)
+        param_dict = self._flatten_param_dict(_param_dict)
 
         # set covariance and Cholesky decomposition
         if cov_inv is None:
@@ -434,7 +479,7 @@ class Fitter:
         # fit
         fit = self._fitter(x, y.mean, guess, cov_inv_sqrt)
         sol = self._eval(x, y, guess, cov_inv_sqrt)
-        out = self._collect_output(fit, sol)
+        out = self._collect_output(fit, param_dict, sol)
         return out
     
     # def eval_gauss(self, fit_range, guess, *,
