@@ -244,7 +244,7 @@ class FitCov:
     def uncorrelated(self):
         return np.diag(np.diag(self.cov))
 
-    def svd(self, rcond=None, cut_back=None):
+    def svd(self, rcond=None, cut_back=None, full_output=False):
         U, s, VT  = np.linalg.svd(self.cov, full_matrices=True, hermitian=True)
         
         if rcond is not None and cut_back is not None:
@@ -263,34 +263,11 @@ class FitCov:
                     s_last = s[indx]
                     s[indx:] = s_last 
         
-        out = U@np.diag(s)@VT
+        if full_output:
+            out = U, s, VT
+        else:
+            out = U@np.diag(s)@VT
         return out
-
-    
-
-        
-
-# def svd_inv(cov, cut_back=None, set_equal=True):
-#     U, s, VT = np.linalg.svd(cov, full_matrices=True, hermitian=True)
-#     # cov = U@np.diag(s)@VT
-
-#     if cut_back==(None or 0):
-#         inv = VT.T@np.diag(1/s)@U.T
-#     else:
-#         if set_equal==True:
-#             s_last = s[-cut_back]
-#             s[-cut_back:] = s_last 
-#             sinv = 1/s
-#             inv = (VT.T*sinv)@U.T
-#         elif set_equal==False:
-#             # sinv = 1/s[-cut_back:]
-#             # inv = (VT.T[-cut_back:]*sinv)@U[-cut_back:,:]
-#             s[-cut_back:] = 0
-#             _cov = U@np.diag(s)@VT
-#             inv = np.linalg.inv(_cov)
-        
-#     return inv
-
 
 # # FIXME this is rcond
 # def svd_inv(cov, rcond=None, cut_back=None):
@@ -489,17 +466,13 @@ class Fitter:
         # parse the guess
         _, guess = self._parse_guess(guess)
 
-        # set covariance and Cholesky decomposition
-        # cov_inv_sqrt = self._set_cholesky(y,
-        #     cov_inv=cov_inv, cov=cov, correlated=correlated,
-        #     offdiagdamp=offdiagdamp, cut_back=cut_back, set_equal=set_equal)
+        # set cov
         if cov_inv is None:
             if cov is None: 
                 _cov = y.cov
-                cov = self._set_cov(y, method, method_kwargs)           
+                cov = self._set_cov(y, method, **method_kwargs)     
             cov_inv = np.linalg.inv(cov)
         cov_inv_sqrt = cholesky(cov_inv)
-
 
         # fit
         fit = self._fitter(x, y.mean, guess, cov_inv_sqrt)
@@ -520,9 +493,9 @@ class Fitter:
             if cov is None: 
                 _cov = y.cov
                 cov = self._set_cov(y, method, **method_kwargs)     
-                print(cov)      
             cov_inv = np.linalg.inv(cov)
         cov_inv_sqrt = cholesky(cov_inv)
+
         # fit
         fit = self._fitter(x, y.mean, guess, cov_inv_sqrt)
         sol = self._eval(x, y, guess, cov_inv_sqrt)
