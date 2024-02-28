@@ -220,11 +220,55 @@ class FitResult:
             G.create_dataset('Ndof', data=self.quality['Ndof'])
 
 
-
-
 ################################################################################
-# Class Fitter
+# Class for dealing with covariance
 ################################################################################
+
+class FitCov:
+
+    def __init__(self, cov):
+        self.cov = cov
+
+    def __repr__(self):
+        return self.cov.__repr__()
+
+    def offdiagdamp(self, damp):
+        N = len(self.cov)
+        out = (1-damp)*np.diag(np.diag(self.cov)) \
+            + np.full((N,N), damp)*self.cov
+        return out
+    
+    def correlated(self):
+        return self.cov
+
+    def uncorrelated(self):
+        return np.diag(np.diag(self.cov))
+
+    def svd(self, rcond=None, cut_back=None):
+        U, s, VT  = np.linalg.svd(self.cov, full_matrices=True, hermitian=True)
+        
+        if rcond is not None and cut_back is not None:
+            raise ValueError("'rcond' and 'cut_back' cannot be both assigned")
+            
+        if (rcond is None and cut_back is not None) or \
+           (rcond is not None and cut_back is None):
+            if rcond is None:
+                rcond = np.linalg.cond(self.cov)
+                s_last = s[-cut_back]
+                s[-cut_back:] = s_last 
+            elif cut_back is None:
+                covrcond = np.linalg.cond(self.cov)
+                if not rcond>covrcond:
+                    indx = np.where(s[0]/s > rcond)[0][0]
+                    s_last = s[indx]
+                    s[indx:] = s_last 
+        
+        out = U@np.diag(s)@VT
+        return out
+
+    
+
+        
 
 # def svd_inv(cov, cut_back=None, set_equal=True):
 #     U, s, VT = np.linalg.svd(cov, full_matrices=True, hermitian=True)
@@ -248,24 +292,40 @@ class FitResult:
 #     return inv
 
 
-# FIXME this is rcond
-def svd_inv(cov, cut_back=None, set_equal=True):
-    U, s, VT = np.linalg.svd(cov, full_matrices=True, hermitian=True)
-    # cov = U@np.diag(s)@VT
+# # FIXME this is rcond
+# def svd_inv(cov, rcond=None, cut_back=None):
+#     U, s, VT = np.linalg.svd(cov, full_matrices=True, hermitian=True)
+#     # cov = U@np.diag(s)@VT
 
-    rcond = np.linalg.cond(cov)
+#     if (rcond is not None) and (rcond is not None):
+#         raise ValueError("'rcond' and 'cut_back' cannot be both not None")
+        
+#     if (rcond is None) and (cut_back is None):
+#         sinv = 1/s
+#     elif rcond is None:
+#         rcond = np.linalg.cond(cov)
 
-    if (cut_back is None) or (cut_back>rcond):
-        sinv = 1/s
-        inv = (VT.T*sinv)@U.T
-    else:
-        indx = np.where(s[0]/s > cut_back)[0][0]
-        s_last = s[indx]
-        s[indx:] = s_last 
-        sinv = 1/s
-        inv = (VT.T*sinv)@U.T
+#         s_last = s[-cut_back]
+#         s[-cut_back:] = s_last 
+#         sinv = 1/s
+#     elif cut_back is None:
+#         covrcond = np.linalg.cond(cov)
+#         if rcond>covrcond:
+#             sinv = 1/s
+#         else:
+#             indx = np.where(s[0]/s > rcond)[0][0]
+#             s_last = s[indx]
+#             s[indx:] = s_last 
+#             sinv = 1/s
+    
+#     inv = VT.T@np.diag(sinv)@U.T
+#     return inv
 
-    return inv
+
+
+################################################################################
+# Class Fitter
+################################################################################
 
 
 class Fitter:
@@ -323,22 +383,6 @@ class Fitter:
         #             prior = prior[v](param[k])
         #             out = np.append(out, prior)   
         # self.prior_func = prior_func
-
-    def _cov(self, data, correlated, offdiagdamp=1):
-        if correlated==True:
-            cov = data.cov
-            N = len(cov)
-            cov = (1-offdiagdamp)*np.diag(np.diag(cov)) + np.full((N,N), offdiagdamp)*cov
-        elif correlated==False:
-            cov = np.diag(data.err**2)
-        return cov
-
-    def _cov_inv(self, cov, cut_back=None, set_equal=True):
-        if cut_back is not None:
-            cov_inv = svd_inv(cov, cut_back=cut_back, set_equal=set_equal)
-        else:
-            cov_inv = np.linalg.inv(cov)
-        return cov_inv
          
     def _residual(self, x, y, cov_inv_sqrt):
         def func(param):
@@ -412,17 +456,32 @@ class Fitter:
         y = self.y[fit_points]
         return x, y
 
+    # # COVARIANCE
+    # def _cov(self, data, correlated, offdiagdamp=1):
+    #     if correlated==True:
+    #         cov = data.cov
+    #         N = len(cov)
+    #         cov = (1-offdiagdamp)*np.diag(np.diag(cov)) + np.full((N,N), offdiagdamp)*cov
+    #     elif correlated==False:
+    #         cov = np.diag(data.err**2)
+    #     return cov
 
-    def _set_cholesky(self, y, *, cov_inv=None, cov=None, correlated=True, offdiagdamp=1, cut_back=None, set_equal=True):
-        if cov_inv is None:
-            if cov is None:
-                cov = self._cov(y, correlated, offdiagdamp)   
-            cov_inv = self._cov_inv(cov, cut_back=cut_back, set_equal=set_equal)
-        cov_inv_sqrt = cholesky(cov_inv)
-        return cov_inv_sqrt
-    
+    # def _cov_inv(self, cov, cut_back=None, set_equal=True):
+    #     if cut_back is not None:
+    #         cov_inv = svd_inv(cov, cut_back=cut_back, set_equal=set_equal)
+    #     else:
+    #         cov_inv = np.linalg.inv(cov)
+    #     return cov_inv
+
+    def _set_cov(self, y, method=None, **method_kwargs):
+        _cov = y.cov
+        cov = getattr(FitCov(_cov), method)(**method_kwargs)              
+        return cov
+        
+    # FIT EVALUATION
     def eval_fit_quality(self, fit_points, guess, *,
-             cov_inv=None, cov=None, correlated=True, offdiagdamp=1, cut_back=None, set_equal=True):
+             cov_inv=None, cov=None,
+             method='correlated', **method_kwargs):
         
         # set fit_points
         x, y = self._set_fit_points(fit_points)
@@ -431,9 +490,16 @@ class Fitter:
         _, guess = self._parse_guess(guess)
 
         # set covariance and Cholesky decomposition
-        cov_inv_sqrt = self._set_cholesky(y,
-            cov_inv=cov_inv, cov=cov, correlated=correlated,
-            offdiagdamp=offdiagdamp, cut_back=cut_back, set_equal=set_equal)
+        # cov_inv_sqrt = self._set_cholesky(y,
+        #     cov_inv=cov_inv, cov=cov, correlated=correlated,
+        #     offdiagdamp=offdiagdamp, cut_back=cut_back, set_equal=set_equal)
+        if cov_inv is None:
+            if cov is None: 
+                _cov = y.cov
+                cov = self._set_cov(y, method, method_kwargs)           
+            cov_inv = np.linalg.inv(cov)
+        cov_inv_sqrt = cholesky(cov_inv)
+
 
         # fit
         fit = self._fitter(x, y.mean, guess, cov_inv_sqrt)
@@ -441,7 +507,8 @@ class Fitter:
         return out
     
     def eval(self, fit_points, guess, *,
-             cov_inv=None, cov=None, correlated=True, offdiagdamp=1, cut_back=None, set_equal=True):
+             cov_inv=None, cov=None,
+             method='correlated', **method_kwargs):
         
         x, y = self._set_fit_points(fit_points)
 
@@ -449,10 +516,13 @@ class Fitter:
         param_dict, guess = self._parse_guess(guess)
 
         # set covariance and Cholesky decomposition
-        cov_inv_sqrt = self._set_cholesky(y,
-            cov_inv=cov_inv, cov=cov, correlated=correlated,
-            offdiagdamp=offdiagdamp, cut_back=cut_back, set_equal=set_equal)
-
+        if cov_inv is None:
+            if cov is None: 
+                _cov = y.cov
+                cov = self._set_cov(y, method, **method_kwargs)     
+                print(cov)      
+            cov_inv = np.linalg.inv(cov)
+        cov_inv_sqrt = cholesky(cov_inv)
         # fit
         fit = self._fitter(x, y.mean, guess, cov_inv_sqrt)
         sol = self._eval(x, y, guess, cov_inv_sqrt)
