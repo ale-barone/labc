@@ -12,6 +12,7 @@ from ..data import merge as dm_merge
 from . import functions as lib
 from .functions import const, exp, cosh, pole
 from  .. import plot as plt
+import h5py
 
 # =============================================================================
 # utilities for fit
@@ -105,7 +106,7 @@ def fit(x, data_in, fit_function, *func_args, rangefit=None, thin=1, guess=[1, 1
     print("# Thinning   = " + str(thin))
     for p in range(num_param):
         print('# param_' + str(p) + ' = ', fit_mean[p], "  err =", fit_err[p] )
-    print('# CHISQ   = ', chisq[1], "  pvalue = ", chisq[0] )
+    print('# CHISQ   = ', chisq[1], "  pval = ", chisq[0] )
     print("####################################################\n")
     
 
@@ -134,6 +135,24 @@ def fit_cosh(param, t, T):
     return 2*param['A'] * np.exp(-param['E']*Thalf) * np.cosh(param['E']*( Thalf - t)) 
 
 ################################################################################
+# Fitter wrapper
+################################################################################
+
+# I need to create a class that picks the minimizer (e.g. least_squares,
+# minimize, leastsq) and that contains all the standard operation for each case
+# (e.g. collect the fit parameters, fit quality) and then pass this into my
+# Fitter class
+
+def _collect_fit_quality(fit):
+    pv, chisq_Ndof, Ndof = chi_sq(fit)
+    out = {
+        'pval': np.round(pv, 3), #f'{pv:.3f}',
+        'chisq/Ndof': np.round(chisq_Ndof, 3), #f'{chisq_Ndof:.3f}',
+        'Ndof': Ndof, 
+    }
+    return out
+
+################################################################################
 # Fit results
 ################################################################################
 
@@ -150,16 +169,7 @@ class FitResult:
 
         self.result_full = self._get_result_full(fitted_param)
         self.result = self._get_result(self.result_full)
-        self.goodness = self._collect_fit_quality(fit_output)
-
-    def _collect_fit_quality(self, fit):
-        pv, chisq_Ndof, Ndof = chi_sq(fit)
-        out = {
-            'pvalue': f'{pv:.3f}',
-            'chisq/Ndof': f'{chisq_Ndof:.3f}',
-            'Ndof': Ndof, 
-        }
-        return out
+        self.quality = _collect_fit_quality(fit_output)
 
 
     def _get_result_full(self, fitted_param):
@@ -193,13 +203,72 @@ class FitResult:
         #     else:
         #         out[param] = full_result_dict[param_list]
         # return out
+    
+    # TODO: make it more general
+    def save(self, file, group, rename_par=None):
+        if rename_par is None:
+            rename_par = {p: p for p in self.param}
+        with h5py.File(file, 'a') as hf:
+            G = hf.create_group(group)
+            for p, pr in rename_par.items():
+                G.create_dataset(f'{pr}/mean', data=self.result[p].mean)
+                G.create_dataset(f'{pr}/err', data=self.result[p].err)
+                G.create_dataset(f'{pr}/bins', data=self.result[p].bins)
 
-
+            G.create_dataset('pval', data=self.quality['pval'])
+            G.create_dataset('chisq/Ndof', data=self.quality['chisq/Ndof'])
+            G.create_dataset('Ndof', data=self.quality['Ndof'])
 
 
 ################################################################################
-# Class Fitter
+# Class for dealing with covariance
 ################################################################################
+
+class FitCov:
+
+    def __init__(self, cov):
+        self.cov = cov
+
+    def __repr__(self):
+        return self.cov.__repr__()
+
+    def offdiagdamp(self, damp):
+        N = len(self.cov)
+        out = (1-damp)*np.diag(np.diag(self.cov)) \
+            + np.full((N,N), damp)*self.cov
+        return out
+    
+    def correlated(self):
+        return self.cov
+
+    def uncorrelated(self):
+        return np.diag(np.diag(self.cov))
+
+    def svd(self, rcond=None, cut_back=None):
+        U, s, VT  = np.linalg.svd(self.cov, full_matrices=True, hermitian=True)
+        
+        if rcond is not None and cut_back is not None:
+            raise ValueError("'rcond' and 'cut_back' cannot be both assigned")
+            
+        if (rcond is None and cut_back is not None) or \
+           (rcond is not None and cut_back is None):
+            if rcond is None:
+                rcond = np.linalg.cond(self.cov)
+                s_last = s[-cut_back]
+                s[-cut_back:] = s_last 
+            elif cut_back is None:
+                covrcond = np.linalg.cond(self.cov)
+                if not rcond>covrcond:
+                    indx = np.where(s[0]/s > rcond)[0][0]
+                    s_last = s[indx]
+                    s[indx:] = s_last 
+        
+        out = U@np.diag(s)@VT
+        return out
+
+    
+
+        
 
 # def svd_inv(cov, cut_back=None, set_equal=True):
 #     U, s, VT = np.linalg.svd(cov, full_matrices=True, hermitian=True)
@@ -223,24 +292,40 @@ class FitResult:
 #     return inv
 
 
+# # FIXME this is rcond
+# def svd_inv(cov, rcond=None, cut_back=None):
+#     U, s, VT = np.linalg.svd(cov, full_matrices=True, hermitian=True)
+#     # cov = U@np.diag(s)@VT
 
-def svd_inv(cov, cut_back=None, set_equal=True):
-    U, s, VT = np.linalg.svd(cov, full_matrices=True, hermitian=True)
-    # cov = U@np.diag(s)@VT
+#     if (rcond is not None) and (rcond is not None):
+#         raise ValueError("'rcond' and 'cut_back' cannot be both not None")
+        
+#     if (rcond is None) and (cut_back is None):
+#         sinv = 1/s
+#     elif rcond is None:
+#         rcond = np.linalg.cond(cov)
 
-    rcond = np.linalg.cond(cov)
+#         s_last = s[-cut_back]
+#         s[-cut_back:] = s_last 
+#         sinv = 1/s
+#     elif cut_back is None:
+#         covrcond = np.linalg.cond(cov)
+#         if rcond>covrcond:
+#             sinv = 1/s
+#         else:
+#             indx = np.where(s[0]/s > rcond)[0][0]
+#             s_last = s[indx]
+#             s[indx:] = s_last 
+#             sinv = 1/s
+    
+#     inv = VT.T@np.diag(sinv)@U.T
+#     return inv
 
-    if (cut_back is None) or (cut_back>rcond):
-        sinv = 1/s
-        inv = (VT.T*sinv)@U.T
-    else:
-        indx = np.where(s[0]/s > cut_back)[0][0]
-        s_last = s[indx]
-        s[indx:] = s_last 
-        sinv = 1/s
-        inv = (VT.T*sinv)@U.T
 
-    return inv
+
+################################################################################
+# Class Fitter
+################################################################################
 
 
 class Fitter:
@@ -298,23 +383,6 @@ class Fitter:
         #             prior = prior[v](param[k])
         #             out = np.append(out, prior)   
         # self.prior_func = prior_func
-
-        
-    def _cov(self, data, correlated, offdiagdamp=1):
-        if correlated==True:
-            cov = data.cov
-            N = len(cov)
-            cov = (1-offdiagdamp)*np.diag(np.diag(cov)) + np.full((N,N), offdiagdamp)*cov
-        elif correlated==False:
-            cov = np.diag(data.err**2)
-        return cov
-
-    def _cov_inv(self, cov, cut_back=None, set_equal=True):
-        if cut_back is not None:
-            cov_inv = svd_inv(cov, cut_back=cut_back, set_equal=set_equal)
-        else:
-            cov_inv = np.linalg.inv(cov)
-        return cov_inv
          
     def _residual(self, x, y, cov_inv_sqrt):
         def func(param):
@@ -373,7 +441,7 @@ class Fitter:
         sol = least_squares(
             fun=res, x0=guess,
             xtol=1e-10, gtol=1e-10, ftol=1e-10,
-            max_nfev=1000,
+            max_nfev=2000,
         )
 
         return sol
@@ -383,10 +451,66 @@ class Fitter:
         sol = self._fitter(x, y, guess, cov_inv_sqrt)
         return sol.x
 
+    def _set_fit_points(self, fit_points):
+        x = self.x[fit_points]
+        y = self.y[fit_points]
+        return x, y
+
+    # # COVARIANCE
+    # def _cov(self, data, correlated, offdiagdamp=1):
+    #     if correlated==True:
+    #         cov = data.cov
+    #         N = len(cov)
+    #         cov = (1-offdiagdamp)*np.diag(np.diag(cov)) + np.full((N,N), offdiagdamp)*cov
+    #     elif correlated==False:
+    #         cov = np.diag(data.err**2)
+    #     return cov
+
+    # def _cov_inv(self, cov, cut_back=None, set_equal=True):
+    #     if cut_back is not None:
+    #         cov_inv = svd_inv(cov, cut_back=cut_back, set_equal=set_equal)
+    #     else:
+    #         cov_inv = np.linalg.inv(cov)
+    #     return cov_inv
+
+    def _set_cov(self, y, method=None, **method_kwargs):
+        _cov = y.cov
+        cov = getattr(FitCov(_cov), method)(**method_kwargs)              
+        return cov
+        
+    # FIT EVALUATION
+    def eval_fit_quality(self, fit_points, guess, *,
+             cov_inv=None, cov=None,
+             method='correlated', **method_kwargs):
+        
+        # set fit_points
+        x, y = self._set_fit_points(fit_points)
+
+        # parse the guess
+        _, guess = self._parse_guess(guess)
+
+        # set covariance and Cholesky decomposition
+        # cov_inv_sqrt = self._set_cholesky(y,
+        #     cov_inv=cov_inv, cov=cov, correlated=correlated,
+        #     offdiagdamp=offdiagdamp, cut_back=cut_back, set_equal=set_equal)
+        if cov_inv is None:
+            if cov is None: 
+                _cov = y.cov
+                cov = self._set_cov(y, method, method_kwargs)           
+            cov_inv = np.linalg.inv(cov)
+        cov_inv_sqrt = cholesky(cov_inv)
+
+
+        # fit
+        fit = self._fitter(x, y.mean, guess, cov_inv_sqrt)
+        out = _collect_fit_quality(fit)
+        return out
     
     def eval(self, fit_points, guess, *,
-             cov_inv=None, cov=None, correlated=True, offdiagdamp=1, cut_back=None, set_equal=True):
+             cov_inv=None, cov=None,
+             method='correlated', **method_kwargs):
         
+        x, y = self._set_fit_points(fit_points)
         # set fit range
         if fit_points is None:
             x = self.x
@@ -400,18 +524,15 @@ class Fitter:
 
         # parse the guess
         param_dict, guess = self._parse_guess(guess)
-        #param_dict = self._flatten_param_dict(_param_dict)
 
         # set covariance and Cholesky decomposition
         if cov_inv is None:
-            if cov is None:
-                cov = self._cov(y, correlated, offdiagdamp)   
-            cov_inv = self._cov_inv(cov, cut_back=cut_back, set_equal=set_equal)
+            if cov is None: 
+                _cov = y.cov
+                cov = self._set_cov(y, method, **method_kwargs)     
+                print(cov)      
+            cov_inv = np.linalg.inv(cov)
         cov_inv_sqrt = cholesky(cov_inv)
-
-        
-        #prior = self._collect_prior_data()
-
         # fit
         fit = self._fitter(x, y.mean, guess, cov_inv_sqrt)
         sol = self._eval(x, y, guess, cov_inv_sqrt)
@@ -489,14 +610,14 @@ class Fitter:
     #             #fit = self._eval_mean(x_cut, y_cut.mean, guess, cov_inv_sqrt_cut)
     #             fit = self._fitter(x_cut, y_cut.mean, guess, cov_inv_sqrt_cut)
     #             param = self._eval(x_cut, y_cut.mean, guess, cov_inv_sqrt_cut)
-    #             out = {**self._collect_fit_quality(fit), **self._collect_fit_param(param)}
+    #             out = {**_collect_fit_quality(fit), **self._collect_fit_param(param)}
                 
     #             # collect
     #             fit_points.append(str(slice(lower+l, lower+u, thin)))
     #             fit_quality.append(out)
 
     #     data = pd.DataFrame(fit_quality, index=fit_points)
-    #     data = data.sort_values('pvalue', ascending=False)
+    #     data = data.sort_values('pval', ascending=False)
     #     return data
     
     # def full_scan(self, fit_range: list, guess: dict, *, correlated,
@@ -546,8 +667,8 @@ class Fitter:
     #             #fit = self._eval_mean(x_cut, y_cut.mean, guess, cov_inv_sqrt_cut)
     #             prior = self._collect_prior_data()
     #             fit = self._fitter(x_cut, y_cut.mean, guess, cov_inv_sqrt_cut, prior.mean)
-    #             quality = self._collect_fit_quality(fit)
-    #             pv = float(quality['pvalue'])
+    #             quality = _collect_fit_quality(fit)
+    #             pv = float(quality['pval'])
     #             # if pv<0.05 or pv>0.95:
     #             #     continue
     #             param = self._eval(x_cut, y_cut, guess, cov_inv_sqrt_cut, prior)
@@ -558,7 +679,7 @@ class Fitter:
     #             fit_quality.append(out)
 
     #     data = pd.DataFrame(fit_quality, index=fit_points)
-    #     data = data.sort_values('pvalue', ascending=False)
+    #     data = data.sort_values('pval', ascending=False)
     #     return data
 
 
