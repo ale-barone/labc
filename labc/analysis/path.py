@@ -12,53 +12,38 @@ class Path:
         else:
             self.work_dir = work_dir
 
-        self._folder_raw = None
-        self._folder_gauge = None
-        self._folder_data = None
-        self._folder_plot = None
+        self._folder_raw = self.work_dir + 'raw/'
+        self._folder_data = self.work_dir + 'data/'
+        self._folder_plot = self.work_dir + 'plot/'
 
+    # SET CUSTOM PATH
+    def set_folder_raw(self, path):
+        self._folder_raw = path
 
-    @property
-    def folder_raw(self):
-        """Path to folder containing raw data
-        (raw gauge configurations from the computation)."""
-        return self._folder_raw
+    def set_folder_data(self, path):
+        Path.make_folder(path)
+        self._folder_data = path
 
-    @folder_raw.setter
-    def folder_raw(self, folder_raw_path):
-        self._folder_raw = folder_raw_path
+    def set_folder_plot(self, path):
+        Path.make_folder(path)
+        self._folder_plot = path
 
-    @property
-    def folder_gauge(self):
-        """Path to folder containing reshaped raw data
-        (raw gauge configurations)."""
-        return self._folder_gauge
+    # GET PATH
+    def folder_raw(self, ensID=''):
+        out = self._folder_raw + f'{ensID}/'
+        return out
+    
+    def folder_data(self, ensID=''):
+        out = self._folder_data + f'{ensID}/'
+        Path.make_folder(out)
+        return out
 
-    @folder_gauge.setter
-    def folder_gauge(self, folder_gauge_path):
-        self._folder_gauge = folder_gauge_path
-        self.make_folder(folder_gauge_path)
+    def folder_plot(self, ensID=''):
+        out = self._folder_plot + f'{ensID}/'
+        Path.make_folder(out)
+        return out
 
-    @property
-    def folder_data(self):
-        """Path to folder containing analysed data."""
-        return self._folder_data
-
-    @folder_data.setter
-    def folder_data(self, folder_data_path):
-        self._folder_data = folder_data_path
-        self.make_folder(folder_data_path)
-
-    @property
-    def folder_plot(self):
-        """Path to folder containing plots of the analysis."""
-        return self._folder_plot
-
-    @folder_plot.setter
-    def folder_plot(self, folder_plot_path):
-        self._folder_plot = folder_plot_path
-        self.make_folder(folder_plot_path)
-
+    # UTILITIES
     @staticmethod
     def make_folder(path_to_folder):
         if not os.path.exists(path_to_folder):
@@ -69,3 +54,4 @@ class Path:
         """Add module to the path."""
         if not path_to_module in sys.path:
             sys.path.append(path_to_module)
+            
