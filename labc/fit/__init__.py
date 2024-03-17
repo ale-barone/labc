@@ -321,13 +321,13 @@ class Fitter:
 
         if isinstance(fit_func, str):
             libfunc = getattr(lib, fit_func)
-            self.func_param = list(libfunc.PARAM.values())
-            self.funcstr = libfunc.STRING
-            def func(param, x):
-                return libfunc()(param, x, *fit_func_args, **fit_func_kwargs)
-            self._fit_func = func
         else:
-            self._fit_func = None
+            libfunc = fit_func
+        self.func_param = list(libfunc.PARAM.values())
+        self.funcstr = libfunc.STRING
+        def func(param, x):
+            return libfunc()(param, x, *fit_func_args, **fit_func_kwargs)
+        self._fit_func = func
         
         self.prior = None
     
