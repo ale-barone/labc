@@ -13,6 +13,7 @@ from . import functions as lib
 from .functions import const, exp, cosh, pole
 from  .. import plot as plt
 import h5py
+from sklearn.covariance import LedoitWolf
 
 # =============================================================================
 # utilities for fit
@@ -147,7 +148,7 @@ def _collect_fit_quality(fit):
     pv, chisq_Ndof, Ndof = chi_sq(fit)
     out = {
         'pval': np.round(pv, 3), #f'{pv:.3f}',
-        'chisq/Ndof': np.round(chisq_Ndof, 3), #f'{chisq_Ndof:.3f}',
+        'chisq_Ndof': np.round(chisq_Ndof, 3), #f'{chisq_Ndof:.3f}',
         'Ndof': Ndof, 
     }
     return out
@@ -216,7 +217,7 @@ class FitResult:
                 G.create_dataset(f'{pr}/bins', data=self.result[p].bins)
 
             G.create_dataset('pval', data=self.quality['pval'])
-            G.create_dataset('chisq/Ndof', data=self.quality['chisq/Ndof'])
+            G.create_dataset('chisq_Ndof', data=self.quality['chisq_Ndof'])
             G.create_dataset('Ndof', data=self.quality['Ndof'])
 
 
@@ -226,8 +227,10 @@ class FitResult:
 
 class FitCov:
 
-    def __init__(self, cov):
+    def __init__(self, y, cov):
+        self.y = y
         self.cov = cov
+        self.err = np.sqrt(np.diag(cov))
 
     def __repr__(self):
         return self.cov.__repr__()
@@ -268,6 +271,66 @@ class FitCov:
         else:
             out = U@np.diag(s)@VT
         return out
+
+    def shrinkage_2(self, alpha):
+        _cov = self.cov
+        tr = np.matrix.trace(_cov)
+        N = len(_cov)
+        cov = (1-alpha)*_cov + tr/N * alpha*np.identity(N)
+        return cov
+
+    def shrinkage(self, coeff):
+        err = self.y.err
+        S = self.cov
+        N = len(S)
+        r = self.y.corr
+        rbar = 1/(N*(N-1)) * (np.sum(r)-np.sum(np.diag(r)))
+        _Foffdiag = rbar* np.outer(err, err)
+        Foffdiag = _Foffdiag - np.diag(np.diag(_Foffdiag)) 
+        Fdiag = np.diag(np.diag(err**2))
+        F = Fdiag + Foffdiag
+
+        out = coeff*F + (1-coeff)*S
+        return out
+
+    def ledoitwolf(self):
+        N = len(self.y.bins)
+        bins = np.random.multivariate_normal(self.y.mean, self.cov, size=N)
+        #bins = np.sqrt(N-1)*self.y.bins
+        cov = LedoitWolf().fit(bins)
+        #print(cov.shrinkage_)
+        return cov.covariance_
+    
+
+    # def _get_ledoitwolf_coeff(self):
+    #     y = self.y
+    #     data = (y-y.mean)/self.err
+    #     N = len(y)
+    #     corr = y.corr
+
+    #     bbarsq = 0
+    #     for db in data.bins:
+    #         bbarsq +=  np.sum((np.outer(db, db) -corr)**2) / N**2
+
+    #     dsq = np.sum(corr - np.identity(N)**2)
+
+    #     coeff = min(bbarsq, dsq) / dsq
+    #     return coeff
+
+    # def ledoitwolf(self):
+    #     coeff = self._get_ledoitwolf_coeff()
+    #     print(coeff)
+    #     cov = coeff*self.uncorrelated() + (1-coeff)*self.cov
+    #     return cov
+
+    def _get_honey(self):
+        y = self.y
+        cov = self.cov
+        N = len(y)
+        T = N
+
+        pi_ij = 1/T * np.sum( (np.outer(y.bins, y.bins) )**2 ) 
+        #pihat = 
 
 # # FIXME this is rcond
 # def svd_inv(cov, rcond=None, cut_back=None):
@@ -361,16 +424,20 @@ class Fitter:
         #             out = np.append(out, prior)   
         # self.prior_func = prior_func
          
-    def _residual(self, x, y, cov_inv_sqrt):
+    def _residual(self, x, y, cov_inv_sqrt, prior_data=None): # prior_list with same order as param
         def func(param):
             fit_func = self.fit_func(param, x).flatten() # FIXME check if it's fine always
             out = np.dot(cov_inv_sqrt, fit_func-y)
-            if self.prior is not None:
-                prior_func = np.array([])
-                for idx, pr in enumerate(self.prior_data):
-                    prior_func = self.prior[self.param[idx]]
-                    print(prior_func)
-                    out = np.append(out, prior_func(param[idx], pr))
+            # if self.prior is not None:
+            #     prior_func = np.array([])
+            #     for idx, pr in enumerate(self.prior_data):
+            #         prior_func = self.prior[self.param[idx]]
+            #         print(prior_func)
+            #         out = np.append(out, prior_func(param[idx], pr))
+            if prior_data is not None:
+                for idxp, pd in enumerate(prior_data):
+                    if not np.mean(pd.bins)==0:
+                        out = np.append(out, self.prior_list[idxp](param[idxp], pd))
             return out
             
         return func
@@ -452,7 +519,7 @@ class Fitter:
 
     def _set_cov(self, y, method=None, **method_kwargs):
         _cov = y.cov
-        cov = getattr(FitCov(_cov), method)(**method_kwargs)              
+        cov = getattr(FitCov(y, _cov), method)(**method_kwargs)              
         return cov
         
     # FIT EVALUATION
@@ -495,6 +562,16 @@ class Fitter:
                 cov = self._set_cov(y, method, **method_kwargs)     
             cov_inv = np.linalg.inv(cov)
         cov_inv_sqrt = cholesky(cov_inv)
+
+        # collect priors
+        if self.prior is not None:
+            _params = np.array(list(param_dict.values())).flatten()
+            _prior_list = np.array(len(_params)*[None])
+
+            for pr_param, pr_func in self.prior.items():
+                _param_pos = int(np.where(_params==pr_param)[0])
+
+                _prior_list[_param_pos] = pr_func
 
         # fit
         fit = self._fitter(x, y.mean, guess, cov_inv_sqrt)
