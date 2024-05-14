@@ -157,6 +157,9 @@ class Analysis:
 
     def add_database_files(self, database):
         self.files = database
+
+    def add_database_plots(self, database):
+        self.plots = database
     
     # def add_database_analysis(self, database):
     #     self.get = database

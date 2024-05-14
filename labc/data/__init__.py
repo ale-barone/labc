@@ -434,7 +434,7 @@ class DataErr(DataBins):
             self.err = np.sqrt(np.diag(self.cov))
 
         self._args = ()
-        self._kwargs = {'seed': None}
+        self._kwargs = {'seed': seed}
         self.seed = seed
 
         self.mean = mean

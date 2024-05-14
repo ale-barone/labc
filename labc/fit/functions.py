@@ -40,7 +40,7 @@ def pole(param, t, M):
 
 
 class Const:
-    STRING = 'f(t) = C'
+    STRING = 'f(x) = C'
     PARAM = {0: 'C'}
     ARGS = {}
 
@@ -48,21 +48,33 @@ class Const:
         return const
     
 class Lin:
-    STRING = 'f(t) = Ax + B'
-    PARAM = {0: 'A', 1: 'B'}
+    STRING = 'f(x) = mx + c'
+    PARAM = {0: 'm', 1: 'c'}
     ARGS ={}
 
     def __new__(cls):
         return lin
 
 class Exp:
-    STRING = 'f(t) = A*exp(-E*t)'
+    STRING = 'f(t) = \sum_i^N Ai*exp(-Ei*t)'
     PARAM = {0: 'A', 1: 'E'}
-    ARGS = {}
+    ARGS = {'N'}
+
 
     def __new__(cls):
-        return exp
+        def _exp(param, t, *, N):
+            A = param[:N]
+            E = param[N:2*N]
+            out = np.sum([Ai*np.exp(-Ei*t) for Ai, Ei in zip(A, E)], axis=0)
+            return out
+        return _exp
     
+    # #@staticmethod
+    # @classmethod
+    # def get_param(cls):
+    #     return cls.ARGS
+
+
 class Exp2:
     STRING = 'f(t) = \sum_i Ai*exp(-Ei*t)'
     PARAM = {0: 'A0', 1: 'A1', 2: 'E0', 3: 'E1'}
@@ -189,3 +201,121 @@ class FFdirectZfitb0:
 
     def __new__(cls):
         return directzfitb0
+    
+
+def ansatz_2(coeff, Mpi, *, Mn=0.93892, Fpi=0.09242, L=None):
+            ga_0 = coeff[0]
+            d16 = coeff[1]
+            deltac2c3 = coeff[2]
+            
+            ga_1 = 4*d16 - (ga_0)**3 / (16*np.pi**2*Fpi**2)
+            ga_2 = ga_0*(1+2*ga_0**2) / (8 * np.pi**2 * Fpi**2) 
+            ga_3 = ga_0*(1+ga_0**2) / (8*np.pi**2*Fpi**2*Mn) - ga_0*deltac2c3/(6*np.pi*Fpi**2)
+            
+            a0 = ga_0 + ga_1*Mpi**2 - ga_2*Mpi**2*np.log(Mpi/Mn) + ga_3*Mpi**3
+            if L is not None:
+                a0 += Mpi**2*np.exp(-Mpi*L)/np.sqrt(Mpi*L)
+            return a0
+
+class Zfita0:
+    STRING = ''
+    PARAM = {0: 'ga_0', 1: 'd16', 2: 'deltac2c3'}
+    
+    def __new__(cls):
+        return ansatz_2
+    
+
+def ansatzcont_2(coeff, Mpia, *, Mn=0.93892, Fpi=0.09242, L=None):
+    Mpi = Mpia.T[0]
+    a = Mpia.T[1]
+
+    ga_0 = coeff[0]
+    d16 = coeff[1]
+    deltac2c3 = coeff[2]
+    a0_a2_0 = coeff[3]
+    
+    ga_1 = 4*d16 - (ga_0)**3 / (16*np.pi**2*Fpi**2)
+    ga_2 = ga_0*(1+2*ga_0**2) / (8 * np.pi**2 * Fpi**2) 
+    ga_3 = ga_0*(1+ga_0**2) / (8*np.pi**2*Fpi**2*Mn) - ga_0*deltac2c3/(6*np.pi*Fpi**2)
+    
+    a0 = ga_0 + ga_1*Mpi**2 - ga_2*Mpi**2*np.log(Mpi/Mn) + ga_3*Mpi**3 + a0_a2_0*a**2
+    if L is not None:
+        a0 += Mpi**2*np.exp(-Mpi*L)/np.sqrt(Mpi*L)
+    return a0
+
+class Zfita0cont:
+    STRING = ''
+    PARAM = {0: 'ga_0', 1: 'd16', 2: 'deltac2c3', 3: 'a0_a2_0'}
+    
+    def __new__(cls):
+        return ansatzcont_2
+
+
+def ansatz_linear(coeff, Mpia, *, Mn=0.93892, Fpi=0.09242, L=None):
+    Mpi = Mpia.T[0]
+    a = Mpia.T[1]
+
+    c0 = coeff[0]
+    c1 = coeff[1]
+    c2 = coeff[2]
+
+    return c0 + c1*Mpi**2 + c2*a**2
+
+class ContExtr:
+    STRING = ''
+    PARAM = {0: 'c0', 1: 'c1', 2: 'c2'}
+    
+    def __new__(cls):
+        return ansatz_linear
+
+
+
+class TmpFit:
+    STRING = ''
+    PARAM = {0: 'c0', 1: 'c1', 2: 'c2'}
+
+    def __new__(cls):
+        def tmpfit(coeff, Mpia, *, Mn=0.93892, Fpi=0.09242, L=None):
+            Mpi = Mpia.T[0][::3]
+            a = Mpia.T[1][::3]
+            
+            coeffa0 = coeff[:4]
+            coeffa1 = coeff[4:7]
+            coeffa2 = coeff[7:10]
+
+            ga_0 = coeffa0[0]
+            d16 = coeffa0[1]
+            deltac2c3 = coeffa0[2]
+            a0_a2_0 = coeffa0[3]
+            
+            ga_1 = 4*d16 - (ga_0)**3 / (16*np.pi**2*Fpi**2)
+            ga_2 = ga_0*(1+2*ga_0**2) / (8 * np.pi**2 * Fpi**2) 
+            ga_3 = ga_0*(1+ga_0**2) / (8*np.pi**2*Fpi**2*Mn) - ga_0*deltac2c3/(6*np.pi*Fpi**2)
+            
+            a0 = ga_0 + ga_1*Mpi**2 - ga_2*Mpi**2*np.log(Mpi/Mn) + ga_3*Mpi**3 + a0_a2_0*a**2
+
+            a1 = coeffa1[0] + coeffa1[1]*Mpi**2 + coeffa1[2]*a**2
+            a2 = coeffa2[0] + coeffa2[1]*Mpi**2 + coeffa2[2]*a**2
+
+            return np.array([a0, a1, a2]).T
+        return tmpfit
+    
+class ContExtrLin:
+    STRING = ''
+    PARAM = {0: 'c0', 1: 'c1', 2: 'c2'}
+
+    def __new__(cls):
+        def tmpfit(coeff, Mpia, *, Mn=0.93892, Fpi=0.09242, L=None):
+            Mpi = Mpia.T[0][::3]
+            a = Mpia.T[1][::3]
+            
+            coeffa0 = coeff[:3]
+            coeffa1 = coeff[3:6]
+            coeffa2 = coeff[6:9]
+            
+            a0 = coeffa0[0] + coeffa0[1]*Mpi**2 + coeffa0[2]*a**2
+            a1 = coeffa1[0] + coeffa1[1]*Mpi**2 + coeffa1[2]*a**2
+            a2 = coeffa2[0] + coeffa2[1]*Mpi**2 + coeffa2[2]*a**2
+
+            return np.array([a0, a1, a2]).T
+        return tmpfit
