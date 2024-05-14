@@ -551,6 +551,16 @@ class Fitter:
              method='correlated', **method_kwargs):
         
         x, y = self._set_fit_points(fit_points)
+        # set fit range
+        if fit_points is None:
+            x = self.x
+            y = self.y #[fit_points]
+        else:
+            x = self.x[fit_points]
+            y = self.y[fit_points]
+
+
+        self.fit_points = x, y
 
         # parse the guess
         param_dict, guess = self._parse_guess(guess)
