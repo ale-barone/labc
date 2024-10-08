@@ -150,6 +150,26 @@ class Analysis:
 
     def list_ensembles(self):
         return list(self._register_ensemble.keys())
+    
+    def sort_ensembles(self, key, lower_cut=None, upper_cut=None, as_dict=False):
+        # NB: from Python 3.6 onwards the standard dict type maintains insertion order by default.
+        ens_list = self.list_ensembles()
+        out = {}
+        for ensID in ens_list:
+            value = self.ensemble(ensID).info[key]
+            if lower_cut is not None:
+                if value<lower_cut:
+                    continue
+            if upper_cut is not None:
+              if value>upper_cut:
+                  continue
+            out[ensID] = value
+        out = {k: v for k, v in sorted(out.items(), key=lambda item: item[1])}
+
+        if as_dict==False:
+          out = list(out.keys())
+        return out
+        
 
     def data(self, ensembleID: str):
         att = getattr(self, ensembleID)
