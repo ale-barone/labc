@@ -145,12 +145,24 @@ def fit_cosh(param, t, T):
 # Fitter class
 
 def _collect_fit_quality(fit):
-    pv, chisq_Ndof, Ndof = chi_sq(fit)
-    out = {
-        'pval': np.round(pv, 3), #f'{pv:.3f}',
-        'chisq_Ndof': np.round(chisq_Ndof, 3), #f'{chisq_Ndof:.3f}',
-        'Ndof': Ndof, 
-    }
+    #FIXME! It is introduced only to move from least_squares to curve_fit
+    try:
+      pv, chisq_Ndof, Ndof = chi_sq(fit)
+      out = {
+          'pval': np.round(pv, 3), #f'{pv:.3f}',
+          'chisq_Ndof': np.round(chisq_Ndof, 3), #f'{chisq_Ndof:.3f}',
+          'Ndof': Ndof, 
+      }
+    except:
+      Ndof = len(fit[2]['fvec']) - len(fit[0])
+      chisq = np.sum(fit[2]['fvec']**2.0)
+      pv = p_value(Ndof, chisq)
+      out = {
+          'pval': np.round(pv, 3), #f'{pv:.3f}',
+          'chisq_Ndof': np.round(chisq/Ndof, 3), #f'{chisq_Ndof:.3f}',
+          'Ndof': Ndof, 
+      }
+        
     return out
 
 ################################################################################
@@ -485,7 +497,7 @@ class Fitter:
         sol = least_squares(
             fun=res, x0=guess,
             xtol=1e-10, gtol=1e-10, ftol=1e-10,
-            max_nfev=2000,
+            max_nfev=10**10,
         )
 
         return sol
@@ -580,6 +592,53 @@ class Fitter:
 
         fitres = FitResult(fit, self.func_param, param_dict, sol)
         return fitres #out
+  
+    # gauss  
+    def eval_gauss(self, fit_points, guess, *,
+             cov_inv=None, cov=None,
+             method='correlated', **method_kwargs):
+        
+        x, y = self._set_fit_points(fit_points)
+
+        # parse the guess
+        param_dict, guess = self._parse_guess(guess)
+
+        # set covariance and Cholesky decomposition
+        if cov_inv is None:
+            if cov is None: 
+                _cov = y.cov
+                cov = self._set_cov(y, method, **method_kwargs)     
+            cov_inv = np.linalg.inv(cov)
+        #cov_inv_sqrt = cholesky(cov_inv)
+
+        # redefine fit_func to match curve_fit conventions
+        def fit_func(x, *param):
+            return self.fit_func(param, x).flatten()
+
+        fit = curve_fit(fit_func, x, y.mean, sigma=cov, p0=guess,
+                absolute_sigma=True, check_finite=True, method='trf',
+                ftol=1e-08, xtol=1e-10, gtol=1e-10, full_output=True, max_nfev=10**10)
+        
+        fit_mean = fit[0]
+        fit_cov = fit[1]
+        fit_out = dM.DataErr(fit_mean, fit_cov)
+        fit_out = fit_out.to_dataStats(None, self.statsType)
+
+        # quality
+        Ndof = len(fit[2]['fvec']) - len(fit_out)
+        chisq = np.sum(fit[2]['fvec']**2.0)
+        pv = p_value(Ndof, chisq)
+        out = {
+            'fit': fit,
+            'result': fit_out,
+            'pval': pv,
+            'Ndof': Ndof,
+            'chisq': chisq/Ndof
+        }
+        fitres = FitResult(fit, self.func_param, param_dict, fit_out)
+
+
+        return fitres
     
     # def eval_gauss(self, fit_range, guess, *,
     #          cov=None, correlated=True, offdiagdamp=1):
