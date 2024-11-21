@@ -32,6 +32,9 @@ def cosh(p: np.ndarray, t: np.ndarray, T: int) -> np.ndarray:
 def pole(param, t, M):
     return param[0] / (M-t)
 
+def dipole(param, q2):
+    f0, M = param
+    return f0 / (1 + q2/M**2)**2
 
 
 ################################################################################
@@ -98,7 +101,14 @@ class Pole:
 
     def __new__(cls):
         return pole
+    
+class Dipole:
+    STRING = 'f(q2) = f0 / (1 +q2/M**2)**2'
+    PARAM = {0: 'f0', 1: 'M'}
+    ARGS = {}
 
+    def __new__(cls):
+        return dipole
 
 def zfit2(param, q2, *, tcut):
     z = (np.sqrt(tcut+q2)-np.sqrt(tcut)) / (np.sqrt(tcut+q2)+np.sqrt(tcut))
