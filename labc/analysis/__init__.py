@@ -164,11 +164,11 @@ class Analysis:
       for ensID in ensID_list:
           value = self.ensemble(ensID).info[key]
           if lower_cut is not None:
-                if value<lower_cut:
-                    as_dict = True
-                    continue
+              if value<=lower_cut:
+                  as_dict = True
+                  continue
           if upper_cut is not None:
-              if value>upper_cut:
+              if value>=upper_cut:
                   as_dict = True
                   continue
           out[ensID] = value
