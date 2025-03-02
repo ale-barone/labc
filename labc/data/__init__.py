@@ -23,8 +23,39 @@ def _print_dataStats(mean, err, prec):
     out = f"({mean_str} +- {err_str} ){power_str}"
     return out
 
-# notation like 3.244(12)
-def _print_dataStats_bis(mean, err, num_digits=2):
+# # notation like 3.244(12)e-01 
+# def _print_dataStats_bis(mean, err, num_digits=2):
+#     """Print mean and error in the form (mean(err))e+xx"""   
+#     power_err = floor(log10(np.abs(err))) if not err==0 else 0 
+#     power_mean = floor(log10(np.abs(mean))) if not mean==0 else 0
+#     power_rel = power_err-power_mean
+    
+#     power_str = f"{10**power_mean:.0e}".replace('1e', 'e')
+
+#     if -5<power_rel<0:
+#         mean_num_digits = power_mean-power_err + (num_digits-1)
+#         mean_str = f"{mean/10**power_mean:.{mean_num_digits}f}"
+
+#         err_prec = -power_err + (num_digits-1)
+#         err_digits = round(err * 10**(err_prec))
+#         err_str = f"{err_digits}"
+#         out = f"{mean_str}({err_str}){power_str}"
+#     elif power_rel==0:
+#         mean_num_digits = power_mean-power_err + (num_digits-1)
+#         mean_str = f"{mean/10**power_mean:.{mean_num_digits}f}"
+
+#         err_prec = -power_err #+ (num_digits-1)
+#         err_digits = err*10**(err_prec)
+#         err_str = f"{err_digits:.{num_digits-1}f}"
+#         out = f"{mean_str}({err_str}){power_str}"
+#     else:        
+#         mean_str = f"{mean/10**power_mean:.{num_digits-1}f}"
+#         err_str = f"{err * 10**(-power_mean):.{num_digits-1}e}"
+#         out = f"({mean_str} +- {err_str}){power_str}"
+#     return out
+
+# notation like 3.244(12)e-01 or 
+def _print_dataStats_bis(mean, err, num_digits=2, scientific=False):
     """Print mean and error in the form (mean(err))e+xx"""   
     power_err = floor(log10(np.abs(err))) if not err==0 else 0 
     power_mean = floor(log10(np.abs(mean))) if not mean==0 else 0
@@ -32,7 +63,45 @@ def _print_dataStats_bis(mean, err, num_digits=2):
     
     power_str = f"{10**power_mean:.0e}".replace('1e', 'e')
 
-    if -5<power_rel<0:
+    # notation like 0.3244(12)
+    if scientific==False:
+      if -5<power_rel<=0:
+        # mean value < 1 
+        if power_mean<0:
+          num_zero_after_comma = np.abs(power_mean) - 1
+          num_significant_digits = num_digits + np.abs(power_rel)      
+          mean_prec = num_significant_digits + num_zero_after_comma 
+          mean_str = f"{mean:.{mean_prec}f}"
+
+          err_prec = -power_err + (num_digits-1) 
+          err_digits = round(err * 10**(err_prec))
+          err_str = f"{err_digits}"
+        
+        # mean value >= 1
+        elif power_mean>=0:
+          num_digits_before_comma = np.abs(power_mean) + 1
+          num_significant_digits = num_digits + np.abs(power_rel)       
+          mean_prec = num_significant_digits - num_digits_before_comma
+          mean_str = f"{mean:.{mean_prec}f}"
+
+          if power_err>=0:
+            err_prec = -power_err + (num_digits-1) 
+            err_str = f"{err:.{err_prec}f}"
+          else:
+            err_prec = -power_err + (num_digits-1) 
+            err_digits = round(err * 10**(err_prec))
+            err_str = f"{err_digits}"
+
+        out = f"{mean_str}({err_str})"
+
+      else:
+        mean_str = f"{mean/10**power_mean:.{num_digits-1}f}"
+        err_str = f"{err * 10**(-power_mean):.{num_digits-1}e}"
+        out = f"({mean_str} +- {err_str}){power_str}"
+    
+    # notation like 3.244(12)e-01
+    if scientific==True:
+      if -5<power_rel<0:
         mean_num_digits = power_mean-power_err + (num_digits-1)
         mean_str = f"{mean/10**power_mean:.{mean_num_digits}f}"
 
@@ -40,7 +109,8 @@ def _print_dataStats_bis(mean, err, num_digits=2):
         err_digits = round(err * 10**(err_prec))
         err_str = f"{err_digits}"
         out = f"{mean_str}({err_str}){power_str}"
-    elif power_rel==0:
+        
+      elif power_rel==0:
         mean_num_digits = power_mean-power_err + (num_digits-1)
         mean_str = f"{mean/10**power_mean:.{mean_num_digits}f}"
 
@@ -48,10 +118,59 @@ def _print_dataStats_bis(mean, err, num_digits=2):
         err_digits = err*10**(err_prec)
         err_str = f"{err_digits:.{num_digits-1}f}"
         out = f"{mean_str}({err_str}){power_str}"
-    else:        
+      else:        
         mean_str = f"{mean/10**power_mean:.{num_digits-1}f}"
         err_str = f"{err * 10**(-power_mean):.{num_digits-1}e}"
-        out = f"({mean_str} +- {err_str}){power_str}"
+        out = f"({mean_str} +- {err_str}){power_str}"    
+
+    return out
+
+# notation like 3.244(12)
+def _print_dataStats_tris(mean, err, num_digits=2):
+    """Print mean and error in the form (mean(err))e+xx"""   
+    power_err = floor(log10(np.abs(err))) if not err==0 else 0 
+    power_mean = floor(log10(np.abs(mean))) if not mean==0 else 0
+    power_rel = power_err-power_mean
+
+    # check if more digits are needed
+    if power_err>=num_digits:
+      num_digits += power_err-num_digits+1
+        
+    
+    # large error
+    if power_rel>0:
+      out = _print_dataStats_bis(mean, err, num_digits=num_digits)
+
+    # small error
+    elif power_rel<=0:
+      # mean value < 1 
+      if power_mean<0:
+        num_zero_after_comma = np.abs(power_mean) - 1
+        num_significant_digits = num_digits + np.abs(power_rel)      
+        mean_prec = num_significant_digits + num_zero_after_comma 
+        mean_str = f"{mean:.{mean_prec}f}"
+
+        err_prec = -power_err + (num_digits-1) 
+        err_digits = round(err * 10**(err_prec))
+        err_str = f"{err_digits}"
+      
+      # mean value >= 1
+      elif power_mean>=0:
+        num_digits_before_comma = np.abs(power_mean) + 1
+        num_significant_digits = num_digits + np.abs(power_rel)       
+        mean_prec = num_significant_digits - num_digits_before_comma
+        mean_str = f"{mean:.{mean_prec}f}"
+
+        if power_err>=0:
+          err_prec = -power_err + (num_digits-1) 
+          err_str = f"{err:.{err_prec}f}"
+        else:
+          err_prec = -power_err + (num_digits-1) 
+          err_digits = round(err * 10**(err_prec))
+          err_str = f"{err_digits}"
+      
+    
+      out = f"{mean_str}({err_str})"
     return out
 
 ################################################################################
@@ -248,13 +367,14 @@ class DataStats(DataBins):
             out += _print_dataStats(self.mean[0], self.err[0], prec) + "]" 
         return out
     
-    def print(self, num_digits=2):
-        out = [_print_dataStats_bis(self.mean[0], self.err[0], num_digits)]
+    def print(self, num_digits=2, scientific=False):
+        # fill outputstring
+        out = [_print_dataStats_bis(self.mean[0], self.err[0], num_digits, scientific)]
         if len(self)>1:
             #out.append(_print_dataStats_bis(self.mean[0], self.err[0], prec))
             for mean, err in zip(self.mean[1:-1], self.err[1:-1]):
-                out.append(_print_dataStats_bis(mean, err, num_digits))
-            out.append(_print_dataStats_bis(self.mean[-1], self.err[-1], num_digits))
+                out.append(_print_dataStats_bis(mean, err, num_digits, scientific))
+            out.append(_print_dataStats_bis(self.mean[-1], self.err[-1], num_digits, scientific))
         return out
 
     # SAVE
