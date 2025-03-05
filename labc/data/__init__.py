@@ -3,6 +3,7 @@ from math import floor, log10
 from .container import Writer as _Writer
 from .utilities import _get_extension
 from scipy.linalg import block_diag
+import gvar as gv
 
 
 # print methods
@@ -95,9 +96,11 @@ def _print_dataStats_bis(mean, err, num_digits=2, scientific=False):
         out = f"{mean_str}({err_str})"
 
       else:
-        mean_str = f"{mean/10**power_mean:.{num_digits-1}f}"
-        err_str = f"{err * 10**(-power_mean):.{num_digits-1}e}"
-        out = f"({mean_str} +- {err_str}){power_str}"
+        # FIXME
+        # mean_str = f"{mean/10**power_mean:.{num_digits-1}f}"
+        # err_str = f"{err * 10**(-power_mean):.{num_digits-1}e}"
+        # out = f"({mean_str} +- {err_str}){power_str}"
+        out = gv.gvar(mean, err).__str__()
     
     # notation like 3.244(12)e-01
     if scientific==True:
@@ -132,16 +135,37 @@ def _print_dataStats_tris(mean, err, num_digits=2):
     power_mean = floor(log10(np.abs(mean))) if not mean==0 else 0
     power_rel = power_err-power_mean
 
-    # check if more digits are needed
+    # check if more digits are needed (for large errors)
     if power_err>=num_digits:
       num_digits += power_err-num_digits+1
         
     
     # large error
     if power_rel>0:
-      out = _print_dataStats_bis(mean, err, num_digits=num_digits)
+      if power_mean>=0:
+        err_prec = -power_err + (num_digits-1) 
+        err_str = f"{err:.{err_prec}f}"
+
+        num_digits_before_comma = np.abs(power_mean) + 1
+        num_zero_after_comma = np.abs(power_mean) - 1
+        num_significant_digits = num_digits + np.abs(power_rel)      
+        #if num_digits_before_comma
+        mean_prec = num_significant_digits + num_zero_after_comma 
+
+        num_digits_before_comma = np.abs(power_mean) + 1
+        num_significant_digits = num_digits + np.abs(power_rel)       
+        mean_prec = num_significant_digits - num_digits_before_comma
+        mean_str = f"{mean:.{mean_prec}f}"
+        
+        mean_str = f"{mean:.0f}"
+
+        
+
+      #   out = _print_dataStats_bis(mean, err, num_digits=num_digits)
+      out = f"{mean_str}({err_str})"
 
     # small error
+    # FIXME add case for when power_rel <5 (see gvar)
     elif power_rel<=0:
       # mean value < 1 
       if power_mean<0:
