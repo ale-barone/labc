@@ -593,7 +593,17 @@ class DataErr(DataBins):
     @num_bins.setter
     def num_bins(self, value):
         self._num_bins = value 
-        
+    
+    def print(self, num_digits=2, scientific=False):
+        # fill outputstring
+        out = [_print_dataStats_bis(self.mean[0], self.err[0], num_digits, scientific)]
+        if len(self)>1:
+            #out.append(_print_dataStats_bis(self.mean[0], self.err[0], prec))
+            for mean, err in zip(self.mean[1:-1], self.err[1:-1]):
+                out.append(_print_dataStats_bis(mean, err, num_digits, scientific))
+            out.append(_print_dataStats_bis(self.mean[-1], self.err[-1], num_digits, scientific))
+        return out
+
 
     def _resample(self, num_bins=None, statsType=None):
         # FIXME! BUG!! It does not account for correlation if I slice a DataErr,
