@@ -1,6 +1,4 @@
 
-
-
 def _tabular_begin(ncols):
   out = "\\" + "begin{tabular}{" + 'l' + 'c'*ncols + "}\n" \
     "\hline\hline\n"
@@ -18,13 +16,14 @@ def _fill_tabular_row(key: str, values: list):
   return out
 
 
-def export_to_table(rows_dict, cols=None, save=None):
+def export_to_tabular(rows_dict, cols=None, save=None):
   len_data = len(list(rows_dict.values())[0])
-  assert(len(cols)==len_data)
+  assert(len(cols)==len_data or len(cols)==len_data+1)
 
   tab = _tabular_begin(len_data)
   if cols is not None:
-    for c in cols:
+    tab += cols[0]
+    for c in cols[1:]:
       tab += " & " + c
     tab += " \\\\" + "\n" \
            "\hline\hline\n"
@@ -40,3 +39,18 @@ def export_to_table(rows_dict, cols=None, save=None):
   return tab
 
 
+
+def export_to_table(tabular, caption=None, label=None, save=None):
+  table =  "\\" + "begin{table}" + "\n"
+  table += tabular + "\n"
+  if caption is not None:
+    table += "\\" + "caption{" + f"{caption}" + "}" + "\n"
+  if label is not None:
+    table += "\\" + "label{" + f"{label}" + "}" + "\n"
+  table += "\\" + "end{table}"
+
+  if save is not None:
+    with open(save, 'w') as of:
+      of.write(table)
+  
+  return table
