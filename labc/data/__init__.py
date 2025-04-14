@@ -451,26 +451,31 @@ class DataErr(DataBins):
         self._num_bins = value 
         
 
-    def _resample(self, num_bins=None, statsType=None):
+    def _resample(self, num_samples=None, statsType=None):
         # FIXME! BUG!! It does not account for correlation if I slice a DataErr,
         # ex. when summing dataerr[0]+dataerr[1]+...!!
         # it would resample the slices independently and forget about the correlations!!
         # for now always convert it to_DataStats
         np.random.seed(self.seed)
 
+        # FIXME this num_samples/statsType arg is not ok
         if statsType is None:
             raw_bins = np.random.multivariate_normal(
-                self.mean, self.cov, num_bins
+                self.mean, self.cov, num_samples
             )
             bias = np.mean(raw_bins, 0)-self.mean
             bins = raw_bins-bias
         else:
-            if num_bins is None and statsType.num_bins is not None:
-                num_bins = statsType.num_bins
+            if statsType.num_bins is not None:
+                try:
+                  num_samples = statsType.num_config
+                except:
+                  num_samples = statsType.num_bins
             # else:
             #     assert(num_bins==statsType.num_bins)
+            
             raw_bins = np.random.multivariate_normal(
-                self.mean, num_bins*self.cov, num_bins
+                self.mean, num_samples*self.cov, num_samples
             )
             bias = np.mean(raw_bins, 0)-self.mean
             raw_bins = raw_bins-bias
