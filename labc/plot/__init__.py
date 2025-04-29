@@ -96,6 +96,13 @@ def fill_error_band(x, y, axis=None, *args, **kwargs):
         axis = plt   
     return axis.fill_between(x, y1, y2, *args, **kwargs)
 
+def fill_error_bandx(x, y, axis=None, *args, **kwargs):
+    y1 = y.mean-y.err
+    y2 = y.mean+y.err
+    if axis is None:
+        axis = plt   
+    return axis.fill_betweenx(x, y1, y2, *args, **kwargs)
+
 class _MyAxes(Axes):
 
     def __init__(self, ax):
@@ -129,6 +136,9 @@ class _MyAxes(Axes):
     
     def fill_error_band(self, x, y, *args, **kwargs):
         return fill_error_band(x, y, axis=self.ax, *args, **kwargs)
+    
+    def fill_error_bandx(self, x, y, *args, **kwargs):
+        return fill_error_bandx(x, y, axis=self.ax, *args, **kwargs)
     
 # INITIALIZATION FOR AXES
 def init_axes(nrows=1, ncols=1, figsize=FIGSIZE, *args, **kwargs):

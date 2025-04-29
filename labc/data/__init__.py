@@ -416,7 +416,6 @@ class DataStats(DataBins):
 
 class DataErr(DataBins):
     """Class for error propagation."""
-
     NUM_BINS = 5000
 
     def __init__(self, mean, err_or_cov, *, seed=None):
@@ -432,6 +431,7 @@ class DataErr(DataBins):
         elif err_or_cov.ndim==2:
             self.cov = err_or_cov
             self.err = np.sqrt(np.diag(self.cov))
+        self.corr = np.diag(1/self.err)@self.cov@np.diag(1/self.err)
 
         self._args = ()
         self._kwargs = {'seed': seed}
@@ -452,6 +452,10 @@ class DataErr(DataBins):
         
 
     def _resample(self, num_bins=None, statsType=None):
+        # FIXME! BUG!! It does not account for correlation if I slice a DataErr,
+        # ex. when summing dataerr[0]+dataerr[1]+...!!
+        # it would resample the slices independently and forget about the correlations!!
+        # for now always convert it to_DataStats
         np.random.seed(self.seed)
 
         if statsType is None:
@@ -461,10 +465,10 @@ class DataErr(DataBins):
             bias = np.mean(raw_bins, 0)-self.mean
             bins = raw_bins-bias
         else:
-            if num_bins is None:
+            if num_bins is None and statsType.num_bins is not None:
                 num_bins = statsType.num_bins
-            else:
-                assert(num_bins==statsType.num_bins)
+            # else:
+            #     assert(num_bins==statsType.num_bins)
             raw_bins = np.random.multivariate_normal(
                 self.mean, num_bins*self.cov, num_bins
             )
@@ -814,7 +818,7 @@ def merge(*data_in):
     elif isinstance(data_in[0], DataErr):
         mean = np.concatenate([data.mean for data in data_in])
         cov = block_diag(*[data.cov for data in data_in])
-        out = DataErr(mean, cov=cov)
+        out = DataErr(mean, err_or_cov=cov)
     return out
 
 def zeros(T, statsType):
@@ -949,4 +953,131 @@ def dataStats_func(func):
         else:
             out = func(*args, **kwargs)
         return out  
+    return wrapper
+
+################################################################################
+# NEW DECORATORS TMP
+################################################################################
+
+# def _has_dataStats(args):
+#     # check if there are DataStats object in args
+#     out = False
+#     for arg in args:
+#         if isinstance(arg, DataStats):
+#             out = True
+#             break
+#     return out 
+
+# def _get_statsType(args):
+#     for arg in args:
+#         if isinstance(arg, DataStats):
+#             out = arg.statsType
+#             break
+#     return out                
+
+
+# def _collect_data_args(args):
+#     args_data = []
+#     for arg in args:
+#         if isinstance(arg, DataStats):
+#             arg = arg._data_vectorized
+#         args_data.append(arg)
+#     args_data = tuple(args_data)
+#     return args_data
+
+# def _collect_mean_kwargs(kwargs):
+#         dict_mean = {}
+#         for key, value in kwargs.items():
+#             if isinstance(value, DataStats):
+#                 value = value.mean
+#             dict_mean[key] = value        
+#         return dict_mean
+
+def _has_dataStats(*args, **kwargs):
+    # check if there are DataStats object in args
+    out = False
+    for arg in tuple(args + tuple(kwargs.values())):
+        if isinstance(arg, DataStats):
+            out = True
+            break
+    return out 
+
+def _get_statsType(*args, **kwargs):
+    for arg in tuple(args + tuple(kwargs.values())):
+        if isinstance(arg, DataStats):
+            out = arg.statsType
+            break
+    return out                
+
+
+def _get_num_bins(*args, **kwargs):
+    for arg in tuple(args + tuple(kwargs.values())):
+        if isinstance(arg, DataStats):
+            out = arg.num_bins()
+            break
+    return out    
+
+def _collect_data_args(*args, **kwargs):
+    args_data = []
+    for arg in args:
+        if isinstance(arg, DataStats):
+            arg = arg._data_vectorized
+        args_data.append(arg)
+    args_data = tuple(args_data)
+
+    kwargs_data = {}
+    for k, v, in kwargs.items():
+        if isinstance(v, DataStats):
+            v = v._data_vectorized
+        kwargs_data[k] = v
+    
+    return args_data, kwargs_data
+    
+
+def dataStats_args_tmp(func):
+    """Decorator to extend a generic function 'func' to allow DataStats
+    arguments with vectorization."""
+
+    def wrapper(*args, **kwargs):
+        is_data_stats = _has_dataStats(*args, **kwargs)
+
+        #print(args)
+
+        if is_data_stats:
+            statsType = _get_statsType(*args, **kwargs)
+            num_data = _get_num_bins(*args, **kwargs)+1 # + mean
+
+            data_args = []
+            for d in range(num_data):
+              _data_args = []
+              for arg in args:
+                if isinstance(arg, DataStats):
+                    _data_args.append(arg._data_vectorized[d])
+                else:
+                    _data_args.append(arg)
+              data_args.append(_data_args)
+            
+            if bool(kwargs):
+              data_kwargs = []
+              for d in range(num_data):
+                _data_kwargs = {}
+                for karg, varg in kwargs.items():
+                  if isinstance(varg, DataStats):
+                      _data_kwargs[karg] = varg._data_vectorized[d]
+                  else:
+                      _data_kwargs[karg] = varg
+                data_kwargs.append(_data_kwargs)
+            else:
+              data_kwargs = [{} for d in range(num_data)]
+            
+            data = []
+            for d in range(num_data):
+                data.append(func(*data_args[d], **data_kwargs[d]))
+              
+            data = np.asarray(data)
+                  
+            out = DataStats(data[0], data[1:], statsType)
+        else:
+            out = func(*args, **kwargs)
+        return out
     return wrapper

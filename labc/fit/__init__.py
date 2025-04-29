@@ -7,12 +7,13 @@ import pandas as pd
 from .. import data as dM
 from  ..data import constant as dMconstant
 from  ..data import zeros as dMzeros
-from ..data import DataStats, dataStats_args
+from ..data import DataStats, dataStats_args, dataStats_args_tmp 
 from ..data import merge as dm_merge
 from . import functions as lib
 from .functions import const, exp, cosh, pole
 from  .. import plot as plt
 import h5py
+import itertools
 from sklearn.covariance import LedoitWolf
 
 # =============================================================================
@@ -145,12 +146,24 @@ def fit_cosh(param, t, T):
 # Fitter class
 
 def _collect_fit_quality(fit):
-    pv, chisq_Ndof, Ndof = chi_sq(fit)
-    out = {
-        'pval': np.round(pv, 3), #f'{pv:.3f}',
-        'chisq_Ndof': np.round(chisq_Ndof, 3), #f'{chisq_Ndof:.3f}',
-        'Ndof': Ndof, 
-    }
+    #FIXME! It is introduced only to move from least_squares to curve_fit
+    try:
+      pv, chisq_Ndof, Ndof = chi_sq(fit)
+      out = {
+          'pval': np.round(pv, 3), #f'{pv:.3f}',
+          'chisq_Ndof': np.round(chisq_Ndof, 3), #f'{chisq_Ndof:.3f}',
+          'Ndof': Ndof, 
+      }
+    except:
+      Ndof = len(fit[2]['fvec']) - len(fit[0])
+      chisq = np.sum(fit[2]['fvec']**2.0)
+      pv = p_value(Ndof, chisq)
+      out = {
+          'pval': np.round(pv, 3), #f'{pv:.3f}',
+          'chisq_Ndof': np.round(chisq/Ndof, 3), #f'{chisq_Ndof:.3f}',
+          'Ndof': Ndof, 
+      }
+        
     return out
 
 ################################################################################
@@ -408,10 +421,11 @@ class Fitter:
         self.prior_data = {}
         self.prior_resampling = resampling
         if resampling==True:
-            bins = np.random.normal(mu, sigma, size=self.num_bins)
-            self.prior_data[param] = DataStats(mu, bins, self.statsType)
+            #bins = np.random.normal(mu, sigma, size=self.num_bins)
+            _prior_data = dM.DataErr(mu, sigma)
+            self.prior_data[param] = _prior_data.to_dataStats(self.num_bins, self.statsType)
         else:
-            self.prior_data[param] = dMconstant(mu, self.statsType)
+            self.prior_data[param] = mu #dMconstant(mu, self.statsType)
         
         def out(p, x):
             return (x-p)/sigma
@@ -424,20 +438,20 @@ class Fitter:
         #             out = np.append(out, prior)   
         # self.prior_func = prior_func
          
-    def _residual(self, x, y, cov_inv_sqrt, prior_data=None): # prior_list with same order as param
+    def _residual(self, x, y, cov_inv_sqrt, **prior): # prior_list with same order as param
         def func(param):
             fit_func = self.fit_func(param, x).flatten() # FIXME check if it's fine always
             out = np.dot(cov_inv_sqrt, fit_func-y)
-            # if self.prior is not None:
-            #     prior_func = np.array([])
-            #     for idx, pr in enumerate(self.prior_data):
-            #         prior_func = self.prior[self.param[idx]]
-            #         print(prior_func)
-            #         out = np.append(out, prior_func(param[idx], pr))
-            if prior_data is not None:
-                for idxp, pd in enumerate(prior_data):
-                    if not np.mean(pd.bins)==0:
-                        out = np.append(out, self.prior_list[idxp](param[idxp], pd))
+
+            if bool(prior):
+                # param_list = np.concatenate(list(self.param_dict.values())).flatten()
+                param_list = np.array(
+                    list(itertools.chain.from_iterable(self.param_dict.values()))
+                )
+                for par, pr_data in prior.items():
+                    idxp = np.where(par==param_list)
+                    out = np.append(out, self.prior[par](param[idxp], pr_data))
+                
             return out
             
         return func
@@ -463,36 +477,27 @@ class Fitter:
                     out_guess.append(guess_param_v)
                 param_dict[idxp] = guess_param_list
             else:
-                param_dict[idxp] = param 
+                param_dict[idxp] = [param] 
                 out_guess.append(guess_param) 
         out_guess = np.asarray(out_guess)
         
         return param_dict, out_guess
 
-
-    def _collect_prior_data(self):
-        prior_data = []
-        for k, v in self.param.items():
-            prior_data.append(self.prior_data[v])
-        prior_data = [self.prior_data[i] for i in range(self.num_param)]
-        return dM.merge(prior_data)
-
-    def _fitter(self, x, y, guess, cov_inv_sqrt):
-        res = self._residual(x, y, cov_inv_sqrt)
+    def _fitter(self, x, y, guess, cov_inv_sqrt, **prior):
+        res = self._residual(x, y, cov_inv_sqrt, **prior)
         #sol = leastsq(res, guess, maxfev=2000, ftol=1e-10, xtol=1e-10, full_output=True)
         #sol = least_squares(res, guess)#, jac='3-point')
 
         sol = least_squares(
             fun=res, x0=guess,
             xtol=1e-10, gtol=1e-10, ftol=1e-10,
-            max_nfev=2000,
+            max_nfev=10**10,
         )
-
         return sol
 
-    @dataStats_args
-    def _eval(self, x, y, guess, cov_inv_sqrt): # prior data must be a list of DataStats
-        sol = self._fitter(x, y, guess, cov_inv_sqrt)
+    @dataStats_args_tmp
+    def _eval(self, x, y, guess, cov_inv_sqrt, **prior):
+        sol = self._fitter(x, y, guess, cov_inv_sqrt, **prior)
         return sol.x
 
     def _set_fit_points(self, fit_points):
@@ -564,6 +569,39 @@ class Fitter:
 
         # parse the guess
         param_dict, guess = self._parse_guess(guess)
+        self.param_dict = param_dict
+
+        # set covariance and Cholesky decomposition
+        if cov_inv is None:
+            if cov is None: 
+                cov = self._set_cov(y, method, **method_kwargs)     
+            cov_inv = np.linalg.inv(cov)
+        cov_inv_sqrt = cholesky(cov_inv)
+
+        prior_data_mean = {}
+        prior_data = {}
+        if bool(self.prior):
+          prior_data = self.prior_data
+          for k, v in self.prior_data.items():
+              prior_data_mean[k] = v.mean
+
+        # fit
+        fit = self._fitter(x, y.mean, guess, cov_inv_sqrt, **prior_data_mean)
+        sol = self._eval(x, y, guess, cov_inv_sqrt, **prior_data)
+        #out = self._collect_output(fit, param_dict, sol)
+
+        fitres = FitResult(fit, self.func_param, param_dict, sol)
+        return fitres #out
+  
+    # gauss  
+    def curve_fit(self, fit_points, guess, *,
+             cov_inv=None, cov=None,
+             method='correlated', **method_kwargs):
+        
+        x, y = self._set_fit_points(fit_points)
+
+        # parse the guess
+        param_dict, guess = self._parse_guess(guess)
 
         # set covariance and Cholesky decomposition
         if cov_inv is None:
@@ -571,25 +609,74 @@ class Fitter:
                 _cov = y.cov
                 cov = self._set_cov(y, method, **method_kwargs)     
             cov_inv = np.linalg.inv(cov)
+        #cov_inv_sqrt = cholesky(cov_inv)
+
+        # redefine fit_func to match curve_fit conventions
+        def fit_func(x, *param):
+            return self.fit_func(param, x).flatten()
+
+        fit = curve_fit(fit_func, x, y.mean, sigma=cov, p0=guess,
+                absolute_sigma=True, check_finite=True, method='trf',
+                ftol=1e-08, xtol=1e-10, gtol=1e-10, full_output=True, max_nfev=10**10)
+        
+        fit_mean = fit[0]
+        fit_cov = fit[1]
+        fit_out = dM.DataErr(fit_mean, fit_cov)
+        fit_out = fit_out.to_dataStats(None, self.statsType)
+
+        # quality
+        Ndof = len(fit[2]['fvec']) - len(fit_out)
+        chisq = np.sum(fit[2]['fvec']**2.0)
+        pv = p_value(Ndof, chisq)
+        out = {
+            'fit': fit,
+            'result': fit_out,
+            'pval': pv,
+            'Ndof': Ndof,
+            'chisq': chisq/Ndof
+        }
+        fitres = FitResult(fit, self.func_param, param_dict, fit_out)
+
+        return fitres
+    
+    # gauss  
+    def eval_gauss(self, fit_points, guess, *,
+             cov_inv=None, cov=None,
+             method='correlated', **method_kwargs):
+        
+        x, y = self._set_fit_points(fit_points)
+
+        # parse the guess
+        param_dict, guess = self._parse_guess(guess)
+        self.param_dict = param_dict
+
+        # set covariance and Cholesky decomposition
+        if cov_inv is None:
+            if cov is None: 
+                cov = self._set_cov(y, method, **method_kwargs)     
+            cov_inv = np.linalg.inv(cov)
         cov_inv_sqrt = cholesky(cov_inv)
 
-        # collect priors
-        if self.prior is not None:
-            _params = np.array(list(param_dict.values())).flatten()
-            _prior_list = np.array(len(_params)*[None])
-
-            for pr_param, pr_func in self.prior.items():
-                _param_pos = int(np.where(_params==pr_param)[0])
-
-                _prior_list[_param_pos] = pr_func
-
+        # collect prior
+        prior_data = {}
+        if bool(self.prior):
+          for k, v in self.prior_data.items():
+              prior_data[k] = v.mean
+            
         # fit
-        fit = self._fitter(x, y.mean, guess, cov_inv_sqrt)
-        sol = self._eval(x, y, guess, cov_inv_sqrt)
+        fit = self._fitter(x, y.mean, guess, cov_inv_sqrt, **prior_data)
+        #sol = self._eval(x, y, guess, cov_inv_sqrt)
         #out = self._collect_output(fit, param_dict, sol)
 
-        fitres = FitResult(fit, self.func_param, param_dict, sol)
-        return fitres #out
+        fit_mean = fit.x
+        fit_cov = np.linalg.inv(fit['jac'].T@fit['jac'])
+
+        fit_out = dM.DataErr(fit_mean, fit_cov)
+        fit_out = fit_out.to_dataStats(None, self.statsType)
+
+
+        fitres = FitResult(fit, self.func_param, param_dict, fit_out)
+        return fitres
     
     # def eval_gauss(self, fit_range, guess, *,
     #          cov=None, correlated=True, offdiagdamp=1):

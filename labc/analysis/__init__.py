@@ -149,6 +149,50 @@ class Analysis:
 
     def list_ensembles(self):
         return list(self._register_ensemble.keys())
+    
+    def get_ensembles_info(self, key, ensID_list=None, lower_cut=None, upper_cut=None, as_dict=False):
+      if ensID_list is not None:
+          if isinstance(ensID_list, (list, np.ndarray)):
+              ensID_list = np.asarray(ensID_list)
+          else:
+              ensID_list = np.array([ensID_list])
+      else:
+          ensID_list = self.list_ensembles()
+
+      out = {}
+      for ensID in ensID_list:
+          value = self.ensemble(ensID).info[key]
+          if lower_cut is not None:
+              if value<=lower_cut:
+                  as_dict = True
+                  continue
+          if upper_cut is not None:
+              if value>=upper_cut:
+                  as_dict = True
+                  continue
+          out[ensID] = value
+
+      if as_dict==False:
+          out = np.array(list(out.values()))
+
+      return out
+    
+    def sort_ensembles(self, key, ensID_list=None, lower_cut=None, upper_cut=None, as_dict=False, reverse=False):
+        # NB: from Python 3.6 onwards the standard dict type maintains insertion order by default.
+        ens_info = self.get_ensembles_info(
+            key, ensID_list=ensID_list,
+            lower_cut=lower_cut, upper_cut=upper_cut, as_dict=True)
+
+        out = {
+            k: v for k, v in
+            sorted(ens_info.items(), key=lambda item: item[1], reverse=reverse)
+        }
+
+        if as_dict==False:
+            out = list(out.keys())
+
+        return out
+           
 
     def data(self, ensembleID: str):
         att = getattr(self, ensembleID)

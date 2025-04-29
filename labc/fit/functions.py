@@ -32,6 +32,13 @@ def cosh(p: np.ndarray, t: np.ndarray, T: int) -> np.ndarray:
 def pole(param, t, M):
     return param[0] / (M-t)
 
+def dipole(param, q2):
+    f0, M = param
+    return f0 / (1 + q2/M**2)**2
+
+def monopole(param, q2):
+    f0, M = param
+    return f0 / (1 + q2/M**2)
 
 
 ################################################################################
@@ -98,7 +105,14 @@ class Pole:
 
     def __new__(cls):
         return pole
+    
+class Dipole:
+    STRING = 'f(q2) = f0 / (1 +q2/M**2)**2'
+    PARAM = {0: 'f0', 1: 'M'}
+    ARGS = {}
 
+    def __new__(cls):
+        return dipole
 
 def zfit2(param, q2, *, tcut):
     z = (np.sqrt(tcut+q2)-np.sqrt(tcut)) / (np.sqrt(tcut+q2)+np.sqrt(tcut))
@@ -202,6 +216,91 @@ class FFdirectZfitb0:
     def __new__(cls):
         return directzfitb0
     
+
+def dipoleZfit(param, q2, *, tcut, nmax=None):
+    param_zfit = param[:-1]
+    M = param[-1]
+    dip = 1 / (1+q2/M**2)**2
+    zf = zfit(param_zfit, q2, tcut=tcut, nmax=nmax)
+
+    return dip*zf
+
+class DipoleZfit:
+    STRING = ''
+    PARAM = {0: 'a', 1: 'b0', 2: 'M'}
+    ARGS = {}
+
+    def __new__(cls):
+        def _dipoleZfit(param, var, *, tcut, nmax):
+          #tcut = (3*0.1348)**2
+          q2 = var.T[0]
+          ts = var.T[1]
+          z = (np.sqrt(tcut+q2)-np.sqrt(tcut)) / (np.sqrt(tcut+q2)+np.sqrt(tcut))
+
+          q2_unique = np.unique(q2)
+          num_q2 = len(q2_unique)
+          ts_unique = np.unique(ts)
+          num_ts = len(ts_unique)
+
+          M = param[-1]
+          dip = 1 / (1 + q2/M**2)**2
+
+          a = np.array([param[i] for i in range(nmax+1)])
+          b0 = np.array([param[i] for i in range(nmax+1, (nmax+1)+num_q2)])
+          b0 = np.array([b0 for i in range(num_ts)]).T.flatten()
+          
+          zfit = np.sum(a[i]*z**i for i in range(nmax+1))
+
+          out = b0 + ts*dip*zfit
+          return out
+        return _dipoleZfit
+    
+
+
+def monopoleZfit(param, q2, *, tcut, nmax=None):
+    param_zfit = param[:-1]
+    M = param[-1]
+    mono = 1 / (1+q2/M**2)
+    zf = zfit(param_zfit, q2, tcut=tcut, nmax=nmax)
+
+    return mono*zf
+
+class MonopoleZfit:
+    STRING = ''
+    PARAM = {0: 'a', 1: 'b0', 2: 'M'}
+    ARGS = {}
+
+    def __new__(cls):
+        def _monopoleZfit(param, var, *, tcut, nmax):
+          #tcut = (3*0.1348)**2
+          q2 = var.T[0]
+          ts = var.T[1]
+          z = (np.sqrt(tcut+q2)-np.sqrt(tcut)) / (np.sqrt(tcut+q2)+np.sqrt(tcut))
+
+          q2_unique = np.unique(q2)
+          num_q2 = len(q2_unique)
+          ts_unique = np.unique(ts)
+          num_ts = len(ts_unique)
+
+          M = param[-1]
+          monop = 1 / (1 + q2/M**2)
+
+          a = np.array([param[i] for i in range(nmax+1)])
+          b0 = np.array([param[i] for i in range(nmax+1, (nmax+1)+num_q2)])
+          b0 = np.array([b0 for i in range(num_ts)]).T.flatten()
+          
+          a = np.array([param[i] for i in range(nmax+1)])
+          b0 = np.array([param[i] for i in range(nmax+1, (nmax+1)+num_q2)])
+          b0 = np.array([b0 for i in range(num_ts)]).T.flatten()
+          
+          zfit = np.sum(a[i]*z**i for i in range(nmax+1))
+
+          out = b0 + ts*monop*zfit
+          return out
+        return _monopoleZfit
+    
+
+
 
 def ansatz_2(coeff, Mpi, *, Mn=0.93892, Fpi=0.09242, L=None):
             ga_0 = coeff[0]
