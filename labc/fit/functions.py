@@ -81,6 +81,20 @@ class Exp:
     # def get_param(cls):
     #     return cls.ARGS
 
+class ExpTmp:
+    STRING = 'f(t) = \sum_i^N Ai*exp(-Ei*t)'
+    PARAM = {0: 'A', 1: 'E'}
+
+    def __new__(cls):
+        def multiexp(param, t):
+            num_state = int(len(param)/2)
+            A = param[:num_state]
+            E = param[num_state:]
+
+            out = np.sum([Ai*np.exp(-Ei*t) for Ai, Ei in zip(A, E)], axis=0)
+            return out
+        return multiexp
+
 
 class Exp2:
     STRING = 'f(t) = \sum_i Ai*exp(-Ei*t)'
