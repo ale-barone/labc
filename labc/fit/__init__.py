@@ -405,7 +405,8 @@ class Fitter:
             return libfunc()(param, x, *fit_func_args, **fit_func_kwargs)
         self._fit_func = func
         
-        self.prior = None
+        self.prior = {}
+        self.prior_data = {}
     
     @property
     def fit_func(self):
