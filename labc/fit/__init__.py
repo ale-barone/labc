@@ -223,6 +223,13 @@ class FitResult:
               + fit_info +'\n'\
               + (max_lenght)*'-' +'\n'
         return out
+    
+    def __getitem__(self, par):
+        try:
+          out = self.result[par]
+        except:
+          out = self.result_full[par]
+        return out
 
     def _get_result_full(self, fitted_param):
         param_dict_flatten = self._flatten_param_dict(self.param_dict)
