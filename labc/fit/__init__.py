@@ -219,11 +219,14 @@ class FitResult:
         # return out
     
     # TODO: make it more general
-    def save(self, file, group, rename_par=None):
+    def save(self, file, group=None, rename_par=None):
         if rename_par is None:
             rename_par = {p: p for p in self.param}
         with h5py.File(file, 'a') as hf:
-            G = hf.create_group(group)
+            if group is None:
+              G = hf
+            else:
+              G = hf.create_group(group)
             for p, pr in rename_par.items():
                 G.create_dataset(f'{pr}/mean', data=self.result[p].mean)
                 G.create_dataset(f'{pr}/err', data=self.result[p].err)
