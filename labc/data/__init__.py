@@ -583,7 +583,6 @@ class DataErr(DataBins):
 
         self.mean = mean
         self._num_bins = self.NUM_BINS
-        self._statsType = None
 
 
     @property
@@ -642,11 +641,12 @@ class DataErr(DataBins):
 
     @property
     def _data_vectorized(self):
-        bins = self.bins(self._num_bins, self._statsType)
-        out = np.concatenate(
-            (np.array([self.mean]), bins), axis=0
-        )
-        return out
+        bins = self.bins(self._num_bins)
+        return np.concatenate((np.array([self.mean]), bins), axis=0)
+
+    def _data_vectorized_with(self, num_bins, statsType):
+        bins = self.bins(num_bins, statsType)
+        return np.concatenate((np.array([self.mean]), bins), axis=0)
 
     # def err_func(self):
     #     bins = self.bins
@@ -722,12 +722,8 @@ class DataErr(DataBins):
             
             out = self._make_class(out_data[0], out_data[1:])
         elif isinstance(other, DataStats):
-            self._statsType = other.statsType
-            self.num_bins = other.num_bins()
-            out_data = getattr(
-                self._data_vectorized, operation
-            )(other._data_vectorized)
-            self._statsType = None
+            self_data = self._data_vectorized_with(other.num_bins(), other.statsType)
+            out_data = getattr(self_data, operation)(other._data_vectorized)
             out = DataStats(out_data[0], out_data[1:], other.statsType)
         return out
     
