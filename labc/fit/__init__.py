@@ -236,6 +236,32 @@ class FitResult:
             G.create_dataset('chisq_Ndof', data=self.quality['chisq_Ndof'])
             G.create_dataset('Ndof', data=self.quality['Ndof'])
 
+    def save2(self, file, group=None, rename_par=None, overwrite=False):
+        if rename_par is None:
+            rename_par = {p: p for p in self.param}
+        else:
+            rename_par = {p: rename_par.get(p, p) for p in self.param}
+
+        def _write(G, key, data):
+            if key in G:
+                if overwrite:
+                    del G[key]
+                else:
+                    raise ValueError(f"'{key}' already exists. Pass overwrite=True to replace it.")
+            G.create_dataset(key, data=data)
+
+        with h5py.File(file, 'a') as hf:
+            G = hf.require_group(group) if group is not None else hf
+
+            for p, pr in rename_par.items():
+                _write(G, f'{pr}/mean', self.result[p].mean)
+                _write(G, f'{pr}/err',  self.result[p].err)
+                _write(G, f'{pr}/bins', self.result[p].bins)
+
+            _write(G, 'pval',       self.quality['pval'])
+            _write(G, 'chisq_Ndof', self.quality['chisq_Ndof'])
+            _write(G, 'Ndof',       self.quality['Ndof'])
+
 
 ################################################################################
 # Class for dealing with covariance
