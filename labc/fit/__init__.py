@@ -15,6 +15,9 @@ from  .. import plot as plt
 import h5py
 import itertools
 from sklearn.covariance import LedoitWolf
+import hashlib
+
+
 
 # =============================================================================
 # utilities for fit
@@ -48,6 +51,10 @@ def chi_sq(fit):
     chisq = sum(fit.fun**2.0)
     pv = p_value(Ndof, chisq)
     return pv, chisq / Ndof, Ndof
+
+def seed_from_string(s: str) -> int:
+    h = hashlib.sha256(s.encode("utf-8")).digest()
+    return int.from_bytes(h[:4], "big")  # 32-bit seed
 
 ################################################################################
 # simple fitter
@@ -445,14 +452,14 @@ class Fitter:
     def fit_func(self, func):
         self._fit_func = func
 
-    def set_prior(self, param, mu, sigma, resampling=True):
+    def set_prior(self, param, mu, sigma, resampling=True, seed=None):
         # assert(param in self.param.values())
-        self.prior = {}
-        self.prior_data = {}
         self.prior_resampling = resampling
         if resampling==True:
+            if isinstance(seed, str):
+              seed = seed_from_string(seed)
             #bins = np.random.normal(mu, sigma, size=self.num_bins)
-            _prior_data = dM.DataErr(mu, sigma)
+            _prior_data = dM.DataErr(mu, sigma, seed=seed)
             self.prior_data[param] = _prior_data.to_dataStats(self.num_bins, self.statsType)
         else:
             self.prior_data[param] = mu #dMconstant(mu, self.statsType)
@@ -691,7 +698,7 @@ class Fitter:
         fit_mean = fit.x
         fit_cov = np.linalg.inv(fit['jac'].T@fit['jac'])
 
-        fit_out = dM.DataErr(fit_mean, fit_cov)
+        fit_out = dM.DataErr(fit_mean, fit_cov, seed=seed_from_string(f'{np.mean(fit_mean):.6f}'))
         fit_out = fit_out.to_dataStats(None, self.statsType)
 
 
