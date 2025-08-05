@@ -6,7 +6,7 @@ class StatsJack(StatsBase):
 
     def __init__(self, num_config, num_bins):
         super().__init__(num_config, num_bins)
-        if num_bins!=None:
+        if num_bins is not None:
             self.prefactor = num_bins -1
         self.ID = 'Jack'
 

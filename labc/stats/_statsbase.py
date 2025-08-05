@@ -56,7 +56,7 @@ class StatsBase(Istats):
         return out
 
     def generate_bins(self, array_raw_in):
-        pass
+        raise NotImplementedError
 
     def _get_num_bins(self, array_bins_in: np.ndarray):
         assert(array_bins_in.ndim==2)
@@ -64,7 +64,7 @@ class StatsBase(Istats):
         return num_bins
 
     def _get_prefactor(self, array_bins_in: np.ndarray):
-        if self.prefactor!=None:
+        if self.prefactor is not None:
             prefactor = self.prefactor
         else:
             num_bins = self._get_num_bins(array_bins_in)
@@ -75,10 +75,12 @@ class StatsBase(Istats):
         return prefactor
 
     def _assert_bins_size(self, array_in):
-        if self.num_bins!=None:
-            assert(self.num_bins==len(array_in)),\
-            "size of array is different from the number of bins"\
-            " 'num_bins' of the object StatsType"
+        if self.num_bins is not None:
+            if self.num_bins != len(array_in):
+                raise ValueError(
+                    f"array length {len(array_in)} does not match "
+                    f"num_bins={self.num_bins} of this StatsType object"
+                )
 
     def err_func(self, array_mean_in, array_bins_in):
         # error 
