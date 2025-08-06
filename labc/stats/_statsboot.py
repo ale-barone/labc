@@ -16,7 +16,7 @@ class StatsBoot(StatsBase):
         assert(num_config==self.num_config),\
             "num_bins of the object does not agree with StatsType.Boot"
         
-        np.random.seed(self.seed)
-        bins = np.random.randint(0, num_config, size=(num_config, self.num_bins)).transpose() 
+        rng = np.random.default_rng(self.seed)
+        bins = rng.integers(0, num_config, size=(self.num_bins, num_config))
         bins = np.mean(array_raw_in[bins], axis=1)
         return bins
