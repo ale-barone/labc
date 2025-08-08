@@ -4,10 +4,13 @@ from ._statsbase import StatsBase
 
 class StatsJack(StatsBase):
 
+    @staticmethod
+    def _prefactor_func(num_bins):
+        return num_bins - 1
+
     def __init__(self, num_config, num_bins):
         super().__init__(num_config, num_bins)
-        if num_bins is not None:
-            self.prefactor = num_bins -1
+        self._prefactor_func = StatsJack._prefactor_func
         self.ID = 'Jack'
 
     def generate_bins(self, array_raw_in):

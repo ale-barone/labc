@@ -34,7 +34,7 @@ class StatsBase(Istats):
         self.num_config = num_config
         self.num_bins = num_bins
         self.seed = seed
-        self.prefactor = None
+        self._prefactor_func = None
         self.ID = None
     
     def __str__(self):
@@ -64,15 +64,8 @@ class StatsBase(Istats):
         return num_bins
 
     def _get_prefactor(self, array_bins_in: np.ndarray):
-        if self.prefactor is not None:
-            prefactor = self.prefactor
-        else:
-            num_bins = self._get_num_bins(array_bins_in)
-            if self.ID=='Jack':
-                prefactor = num_bins-1
-            elif self.ID=='Boot':
-                prefactor=1
-        return prefactor
+        num_bins = self._get_num_bins(array_bins_in)
+        return self._prefactor_func(num_bins)
 
     def _assert_bins_size(self, array_in):
         if self.num_bins is not None:
