@@ -90,64 +90,41 @@ class StatsBase(Istats):
         err = self.err_func(mean, bins)  
         return mean, err, bins
 
-    def cov2(self, data_x_in, data_y_in, *, num_bins=None, rangefit=None, thin=1):
-        """Compute the covariance matrix of two dataStats objects."""
-        
-        T = len(data_x_in)
-        num_bins = data_x_in.num_bins() if num_bins is None else num_bins
-        xmin, xmax = (0, T) if rangefit is None else (rangefit[0], rangefit[1])
-        
-        data_x_cut_mean = data_x_in.mean[xmin:xmax:thin]
-        data_y_cut_mean = data_y_in.mean[xmin:xmax:thin]
-        num_points = len(data_x_cut_mean)
-        
-        cov = np.empty(shape=(num_bins, num_points, num_points))
+    def cov(self, data_x_in, data_y_in=None):
+        """Compute the covariance matrix of one or two DataStats objects.
+
+        If only data_x_in is provided, computes the auto-covariance matrix.
+        If data_y_in is also provided, computes the cross-covariance matrix.
+        Slicing (rangefit, thinning) should be applied to the inputs beforehand.
+        """
+        if data_y_in is None:
+            data_y_in = data_x_in
+        num_bins = data_x_in.num_bins()
+        cov = np.empty(shape=(num_bins, len(data_x_in), len(data_y_in)))
         for b in range(num_bins):
-            bins_x_cut_aux = data_x_in.bins[b][xmin:xmax:thin]
-            bins_y_cut_aux = data_y_in.bins[b][xmin:xmax:thin]
-            
-            # Covariance (already applying cuts)
-            vec_x = bins_x_cut_aux - data_x_cut_mean
-            vec_y = bins_y_cut_aux - data_y_cut_mean
+            vec_x = data_x_in.bins[b] - data_x_in.mean
+            vec_y = data_y_in.bins[b] - data_y_in.mean
             cov[b] = np.outer(vec_x, vec_y)
-  
         prefactor = self._get_prefactor(data_x_in.bins)
-        cov = prefactor * np.mean(cov, 0)
-        return cov
+        return prefactor * np.mean(cov, 0)
 
-    def cov(self, data_x_in, *, num_bins=None, rangefit=None, thin=1):
-        return self.cov2(data_x_in, data_x_in, num_bins=num_bins, rangefit=rangefit, thin=thin)
+    def cov_blocks(self, *data_in):
+        """Covariance matrix of multiple DataStats objects treated as one dataset."""
+        return self.cov(dM.merge(*data_in))
 
-    def cov_blocks(self, *data_in, num_bins=None, rangefit=None, thin=1):
-        """General covariance matrix possibly for different input arrays."""
-        data_in_merged = dM.merge(*data_in)
-        return self.cov(data_in_merged, num_bins=num_bins, rangefit=rangefit, thin=thin)
+    def cov_blocks_diag(self, *data_in):
+        """Block diagonal covariance matrix of multiple DataStats objects."""
+        return block_diag(*[self.cov(data) for data in data_in])
 
-    def cov_blocks_diag(self, *data_in, num_bins=None, rangefit=None, thin=1):
-        """Block diagonal covariance matrix"""
-        cov_list = []
-        for data in data_in:
-            cov_list.append(self.cov(data))
-        return block_diag(*cov_list)
+    def corr(self, data_x_in, data_y_in=None):
+        """Compute the correlation matrix of one or two DataStats objects.
 
-
-    def corr2(self, data_x_in, data_y_in, *, num_bins=None, rangefit=None, thin=1):
-        """Compute the correlation matrix of two dataStats objects."""
-        cov = self.cov2(data_x_in, data_y_in, 
-            num_bins=num_bins, rangefit=rangefit, thin=thin
-        )
-        xmin, xmax = (0, len(data_x_in)) if rangefit is None else (rangefit[0], rangefit[1])
-        err_x = data_x_in.err[xmin:xmax:thin]
-        err_y = data_y_in.err[xmin:xmax:thin]
-        corr = np.diag(1/err_x)@cov@np.diag(1/err_y)
-        return corr
-
-    def corr(self, data_x_in, *, num_bins=None, rangefit=None, thin=1):
+        If only data_x_in is provided, computes the auto-correlation matrix.
+        If data_y_in is also provided, computes the cross-correlation matrix.
+        Slicing (rangefit, thinning) should be applied to the inputs beforehand.
         """
-        Compute the correlation matrix of the time slices of 
-        one dataStats objects.
-        """
-        corr = self.corr2(data_x_in, data_x_in,
-            num_bins=num_bins, rangefit=rangefit, thin=thin
-        )
+        if data_y_in is None:
+            data_y_in = data_x_in
+        cov = self.cov(data_x_in, data_y_in)
+        corr = np.diag(1/data_x_in.err) @ cov @ np.diag(1/data_y_in.err)
         return corr
