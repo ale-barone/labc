@@ -20,8 +20,13 @@ class StatsType(_StatsBase):
         self._prefactor_func = _REGISTRY[statsID]._prefactor_func
 
     class Jack:
-        def __new__(cls, *, num_config, num_bins):
-            return _StatsJack(num_config, num_bins)
+        def __new__(cls, *, num_config, rebin=1):
+            if num_config is None:
+                raise ValueError(
+                    "num_config is required for StatsType.Jack. "
+                    "For the bins-only workflow use StatsType('Jack') instead."
+                )
+            return _StatsJack(num_config, rebin)
 
     class Boot:
         def __new__(cls, *, num_config, num_bins, seed=0):
