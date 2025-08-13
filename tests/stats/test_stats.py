@@ -13,6 +13,8 @@ class TestStatsType:
         with pytest.raises(ValueError):
             StatsType('Invalid')
 
+# TODO: Test the statsBase by itself? Like cov and corr
+
 class TestStatsJack:
 
     def test_generate_bins_shape(self):
@@ -31,7 +33,6 @@ class TestStatsJack:
         assert err.shape == (T,)
         assert bins.shape == (num_config, T)
     
-
     def test_err_zero_for_constant_data(self):
         num_config, T = 20, 8
         data = np.ones((num_config, T)) * 3.14
@@ -42,6 +43,7 @@ class TestStatsJack:
     # TODO: add more tests for err_func?
 
     def test_jackknife_mean(self):
+        """The jackknife mean should equal the sample mean."""
         num_config, T = 20, 8
         data = make_data(num_config, T)
         jack = StatsType.Jack(num_config=num_config)
@@ -90,3 +92,50 @@ class TestStatsJack:
         """rebin >= 4 should raise a ValueError."""
         with pytest.raises(ValueError):
             StatsType.Jack(num_config=20, rebin=4)
+
+
+class TestStatsBoot:
+
+    def test_generate_bins_shape(self):
+        num_config, num_bins, T = 20, 100, 8
+        data = make_data(num_config, T)
+        boot = StatsType.Boot(num_config=num_config, num_bins=num_bins, seed=0)
+        bins = boot.generate_bins(data)
+        assert bins.shape == (num_bins, T)
+
+    def test_generate_stats_shapes(self):
+        num_config, num_bins, T = 20, 100, 8
+        data = make_data(num_config, T)
+        boot = StatsType.Boot(num_config=num_config, num_bins=num_bins, seed=0)
+        mean, err, bins = boot.generate_stats(data)
+        assert mean.shape == (T,)
+        assert err.shape == (T,)
+        assert bins.shape == (num_bins, T)
+
+    def test_reproducibility(self):
+        num_config, T = 20, 8
+        data = make_data(num_config, T)
+        boot1 = StatsType.Boot(num_config=num_config, num_bins=100, seed=42)
+        boot2 = StatsType.Boot(num_config=num_config, num_bins=100, seed=42)
+        np.testing.assert_array_equal(boot1.generate_bins(data), boot2.generate_bins(data))
+
+    def test_different_seeds_differ(self):
+        num_config, T = 20, 8
+        data = make_data(num_config, T)
+        boot1 = StatsType.Boot(num_config=num_config, num_bins=100, seed=1)
+        boot2 = StatsType.Boot(num_config=num_config, num_bins=100, seed=2)
+        assert not np.array_equal(boot1.generate_bins(data), boot2.generate_bins(data))
+
+    def test_wrong_num_config_raises(self):
+        num_config, num_bins, T = 20, 100, 5
+        boot = StatsType.Boot(num_config=num_config, num_bins=num_bins, seed=0)
+        data = make_data(19, 4)
+        with pytest.raises((ValueError, AssertionError)):
+            boot.generate_bins(data)
+
+    def test_err_zero_for_constant_data(self):
+        num_config, num_bins, T = 20, 100, 8
+        data = np.ones((num_config, T)) * 2.71
+        boot = StatsType.Boot(num_config=num_config, num_bins=num_bins, seed=0)
+        _, err, _ = boot.generate_stats(data)
+        np.testing.assert_allclose(err, 0.0)
