@@ -3,7 +3,6 @@ from math import floor, log10
 from .container import Writer as _Writer
 from .utilities import _get_extension
 from scipy.linalg import block_diag
-import gvar as gv
 
 
 # print methods
@@ -95,12 +94,23 @@ def _print_dataStats_bis(mean, err, num_digits=2, scientific=False):
 
         out = f"{mean_str}({err_str})"
 
+      elif power_rel > 0:
+        # error >= mean: show both mean and error to the same decimal places,
+        # determined by rounding mean to (num_digits-1) significant figures.
+        # The matching decimal in the error avoids ambiguity, e.g.
+        # 0.3(121.0) is unambiguous, while 0.3(121) could be read as +-0.121
+        d = max(0, num_digits - 2 - power_mean)
+        mean_str = f"{mean:.{d}f}"
+        err_str  = f"{err:.{d}f}"
+        out = f"{mean_str}({err_str})"
       else:
-        # FIXME
-        # mean_str = f"{mean/10**power_mean:.{num_digits-1}f}"
-        # err_str = f"{err * 10**(-power_mean):.{num_digits-1}e}"
-        # out = f"({mean_str} +- {err_str}){power_str}"
-        out = gv.gvar(mean, err).__str__()
+        # power_rel <= -5: very small error, use standard compact notation
+        # with as many decimal places as needed to correctly place the error digit
+        err_prec = -power_err + (num_digits - 1)
+        err_digits = round(err * 10**err_prec)
+        mean_str = f"{mean:.{err_prec}f}"
+        err_str = f"{err_digits}"
+        out = f"{mean_str}({err_str})"
     
     # notation like 3.244(12)e-01
     if scientific==True:

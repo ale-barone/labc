@@ -1,6 +1,9 @@
 __pycache__
-test
-functions.py
-mymodule.py
+*.pyc
 .spyproject
 docs/build
+tmp*
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+
