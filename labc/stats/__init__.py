@@ -1,14 +1,16 @@
-from ._statsbase import StatsBase as _StatsBase
-from ._statsjack import StatsJack as _StatsJack
-from ._statsboot import StatsBoot as _StatsBoot
+from ._statsbase import StatsBase
+from ._statsjack import StatsJack
+from ._statsboot import StatsBoot
+
+__all__ = ['StatsType', 'StatsBase', 'StatsJack', 'StatsBoot']
 
 _REGISTRY = {
-    'Jack': _StatsJack,
-    'Boot': _StatsBoot,
+    'Jack': StatsJack,
+    'Boot': StatsBoot,
 }
 
 
-class StatsType(_StatsBase):
+class StatsType(StatsBase):
 
     _KNOWN_IDS = set(_REGISTRY)
 
@@ -19,15 +21,15 @@ class StatsType(_StatsBase):
         self.ID = statsID
         self._prefactor_func = _REGISTRY[statsID]._prefactor_func
 
-    class Jack:
-        def __new__(cls, *, num_config, rebin=1):
-            if num_config is None:
-                raise ValueError(
-                    "num_config is required for StatsType.Jack. "
-                    "For the bins-only workflow use StatsType('Jack') instead."
-                )
-            return _StatsJack(num_config, rebin)
+    @staticmethod
+    def Jack(*, num_config, rebin=1):
+        if num_config is None:
+            raise ValueError(
+                "num_config is required for StatsType.Jack. "
+                "For the bins-only workflow use StatsType('Jack') instead."
+            )
+        return StatsJack(num_config, rebin)
 
-    class Boot:
-        def __new__(cls, *, num_config, num_bins, seed=0):
-            return _StatsBoot(num_config=num_config, num_bins=num_bins, seed=seed)
+    @staticmethod
+    def Boot(*, num_config, num_bins, seed=0):
+        return StatsBoot(num_config=num_config, num_bins=num_bins, seed=seed)
