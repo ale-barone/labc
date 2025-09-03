@@ -23,36 +23,6 @@ def _print_dataStats(mean, err, prec):
     out = f"({mean_str} +- {err_str} ){power_str}"
     return out
 
-# # notation like 3.244(12)e-01 
-# def _print_dataStats_bis(mean, err, num_digits=2):
-#     """Print mean and error in the form (mean(err))e+xx"""   
-#     power_err = floor(log10(np.abs(err))) if not err==0 else 0 
-#     power_mean = floor(log10(np.abs(mean))) if not mean==0 else 0
-#     power_rel = power_err-power_mean
-    
-#     power_str = f"{10**power_mean:.0e}".replace('1e', 'e')
-
-#     if -5<power_rel<0:
-#         mean_num_digits = power_mean-power_err + (num_digits-1)
-#         mean_str = f"{mean/10**power_mean:.{mean_num_digits}f}"
-
-#         err_prec = -power_err + (num_digits-1)
-#         err_digits = round(err * 10**(err_prec))
-#         err_str = f"{err_digits}"
-#         out = f"{mean_str}({err_str}){power_str}"
-#     elif power_rel==0:
-#         mean_num_digits = power_mean-power_err + (num_digits-1)
-#         mean_str = f"{mean/10**power_mean:.{mean_num_digits}f}"
-
-#         err_prec = -power_err #+ (num_digits-1)
-#         err_digits = err*10**(err_prec)
-#         err_str = f"{err_digits:.{num_digits-1}f}"
-#         out = f"{mean_str}({err_str}){power_str}"
-#     else:        
-#         mean_str = f"{mean/10**power_mean:.{num_digits-1}f}"
-#         err_str = f"{err * 10**(-power_mean):.{num_digits-1}e}"
-#         out = f"({mean_str} +- {err_str}){power_str}"
-#     return out
 
 # notation like 3.244(12)e-01 or 
 def _print_dataStats_bis(mean, err, num_digits=2, scientific=False):
@@ -138,74 +108,6 @@ def _print_dataStats_bis(mean, err, num_digits=2, scientific=False):
 
     return out
 
-# notation like 3.244(12)
-def _print_dataStats_tris(mean, err, num_digits=2):
-    """Print mean and error in the form (mean(err))e+xx"""   
-    power_err = floor(log10(np.abs(err))) if not err==0 else 0 
-    power_mean = floor(log10(np.abs(mean))) if not mean==0 else 0
-    power_rel = power_err-power_mean
-
-    # check if more digits are needed (for large errors)
-    if power_err>=num_digits:
-      num_digits += power_err-num_digits+1
-        
-    
-    # large error
-    if power_rel>0:
-      if power_mean>=0:
-        err_prec = -power_err + (num_digits-1) 
-        err_str = f"{err:.{err_prec}f}"
-
-        num_digits_before_comma = np.abs(power_mean) + 1
-        num_zero_after_comma = np.abs(power_mean) - 1
-        num_significant_digits = num_digits + np.abs(power_rel)      
-        #if num_digits_before_comma
-        mean_prec = num_significant_digits + num_zero_after_comma 
-
-        num_digits_before_comma = np.abs(power_mean) + 1
-        num_significant_digits = num_digits + np.abs(power_rel)       
-        mean_prec = num_significant_digits - num_digits_before_comma
-        mean_str = f"{mean:.{mean_prec}f}"
-        
-        mean_str = f"{mean:.0f}"
-
-        
-
-      #   out = _print_dataStats_bis(mean, err, num_digits=num_digits)
-      out = f"{mean_str}({err_str})"
-
-    # small error
-    # FIXME add case for when power_rel <5 (see gvar)
-    elif power_rel<=0:
-      # mean value < 1 
-      if power_mean<0:
-        num_zero_after_comma = np.abs(power_mean) - 1
-        num_significant_digits = num_digits + np.abs(power_rel)      
-        mean_prec = num_significant_digits + num_zero_after_comma 
-        mean_str = f"{mean:.{mean_prec}f}"
-
-        err_prec = -power_err + (num_digits-1) 
-        err_digits = round(err * 10**(err_prec))
-        err_str = f"{err_digits}"
-      
-      # mean value >= 1
-      elif power_mean>=0:
-        num_digits_before_comma = np.abs(power_mean) + 1
-        num_significant_digits = num_digits + np.abs(power_rel)       
-        mean_prec = num_significant_digits - num_digits_before_comma
-        mean_str = f"{mean:.{mean_prec}f}"
-
-        if power_err>=0:
-          err_prec = -power_err + (num_digits-1) 
-          err_str = f"{err:.{err_prec}f}"
-        else:
-          err_prec = -power_err + (num_digits-1) 
-          err_digits = round(err * 10**(err_prec))
-          err_str = f"{err_digits}"
-      
-    
-      out = f"{mean_str}({err_str})"
-    return out
 
 ################################################################################
 # DataBins
@@ -319,13 +221,10 @@ class DataBins:
                 return False  
 
     # HOOK NUMPY
-    # FIXME: I don't particularly like this trick, it's a bit fishy...
-    def __array__(self):
-        class ObjWrapper:
-            def __init__(self, data):
-                self.data = data
-        out = ObjWrapper(self)
-        return np.asarray(out)  
+    def __array__(self, dtype=None):  # dtype required by numpy API, always ignored
+        out = np.empty((), dtype=object)
+        out[()] = self
+        return out
 
 
 ################################################################################
@@ -747,211 +646,6 @@ class DataErr(DataBins):
         return out
 
 
-
-################################################################################
-# DataErr
-################################################################################
-
-
-# class DataErr:
-#     """Class for error propagation."""
-
-#     def __init__(self, mean, err=None, *, cov=None, num_bins=2000, seed=None):
-#         if not isinstance(mean, (np.ndarray, list)):
-#             mean = np.array([mean])
-
-#         if cov is None:
-#             if not isinstance(err, np.ndarray):
-#                 err = np.array([err])
-#             self.cov = np.diag(err**2)
-#         elif cov is not None:
-#             #assert(np.allclose(err**2, np.diag(cov), atol=1e-15))
-#             assert(err is None), "'err' must be 'None' if cov is specified"
-#             assert(cov.ndim==2), f"'cov' has to be a 2D array, " \
-#                                   f" here ndim={cov.ndim}" \
-#                                   f" with shape={cov.shape}"
-#             self.cov = cov
-#             err = np.sqrt(np.diag(cov))
-
-#         self.seed = seed
-#         self.num_resampled_bins = num_bins
-
-#         self.mean = np.asarray(mean)
-#         self._bins = None
-#         self.err = np.asarray(err)
-        
-    
-#     def num_bins(self):
-#         return self.num_resampled_bins
-
-#     def resample(self, num_bins):
-#         if num_bins is None:
-#             num_bins = self.num_bins()
-#         np.random.seed(self.seed)
-#         raw_bins = np.random.multivariate_normal(
-#             self.mean, self.cov, num_bins
-#         )
-#         bias = np.mean(raw_bins, 0)-self.mean
-#         bins = raw_bins-bias
-#         return bins
-    
-#     @property
-#     def bins(self):
-#         if self._bins is None:
-#             self._bins = self.resample(self.num_bins())
-#         return self._bins
-    
-#     def err_func(self):
-#         bins = self.bins
-#         err = np.sqrt(np.var(bins, axis=0))
-#         return err 
-
-#     def cov_func(self):
-#         cov = np.cov(self.bins, rowvar=False)
-#         return cov
-    
-
-#     # def make_class_from_bins(self, mean, bins):
-#     #     dataStats = DataBins(mean, bins)
-#     #     err = 
-
-
-
-#     def __len__(self):
-#         return (len(self.mean))
-
-#     def __repr__(self):
-#         prec = 4 # precision
-#         space = len('DataErr[')*" "
-#         out = f"DataErr["
-#         if len(self)>1:
-#             out += f"{self.mean[0]: .{prec}e} +- {self.err[0]:.{prec}e},\n" + space
-#             for mean, err in zip(self.mean[1:-1], self.err[1:-1]):
-#                 out += f"{mean: .{prec}e} +- {err:.{prec}e},\n" + space
-#         out += f"{self.mean[-1]: .{prec}e} +- {self.err[-1]:.{prec}e}]"      
-#         return out
-
-#     def __str__(self):
-#         prec = 5 # precision
-#         space = len('DataErr[')*" "
-#         out = f"DataErr["
-#         if len(self)>1:
-#             out += _print_dataStats(self.mean[0], self.err[0], prec) + ",\n"
-#             for mean, err in zip(self.mean[1:-1], self.err[1:-1]):
-#                 out += space + _print_dataStats(mean, err, prec) + ",\n"
-#             out += space + _print_dataStats(self.mean[-1], self.err[-1], prec) + "]"
-#         else:
-#             out += _print_dataStats(self.mean[0], self.err[0], prec) + "]" 
-#         return out
-    
-
-#     def to_dataStats(self, num_bins, statsType):
-#         bins = self.resample_statsType(num_bins, statsType)
-#         out = DataStats(self.mean, bins, statsType)
-#         return out
-    
-#     def resample_statsType(self, num_bins, statsType):
-#         np.random.seed(self.seed)
-#         raw_bins = np.random.multivariate_normal(self.mean, num_bins*self.cov, num_bins)
-#         bias = np.mean(raw_bins, 0)-self.mean
-#         raw_bins = raw_bins-bias
-#         bins = statsType.generate_bins(raw_bins)
-#         return bins
-
-    
-#     # generic overload for mathematical operations among 2 DataStats objects
-#     def _overload_math_dataStats(self, other, operation):
-#         statsType = other.statsType
-#         num_bins = other.num_bins()
-
-#         bins = self.resample_statsType(num_bins, statsType)
-
-#         data = DataStats(self.mean, bins, statsType)
-#         out_data = getattr(other, operation)(data)
-#         return out_data
-    
-#     def _overload_math_dataErr(self, other, operation):
-#         num_bins = max(self.num_bins(), other.num_bins())
-#         bins = self.resample(num_bins)
-#         bins_other = other.resample(num_bins)
-
-#         out_mean = getattr(self.mean, operation)(other.mean)
-#         out_bins = getattr(bins, operation)(bins_other)
-#         out_err = self.err_func()
-#         out = DataErr(out_mean, err=out_err, num_bins=num_bins)
-#         return out
-    
-#     # generic overload for mathematical operations (following numpy)
-#     def _overload_math_numpy(self, other, operation):
-#         out_mean = getattr(self.mean, operation)(other)
-#         bins = self.resample()
-#         out_bins = getattr(bins, operation)(other)
-#         #out_err = getattr(self.err, operation)(other)
-#         out_err = np.sqrt(np.var(out_bins, axis=0))
-#         #out_cov = getattr(self.cov, operation)(other)
-#         # recompute covariance with np.cov?
-#         out = DataErr(out_mean, err=out_err)
-#         return out
-    
-#     # # math overload
-
-#     def _overload_math(self, other, operation):
-#         if isinstance(other, DataErr):
-#             out = self._overload_math_dataErr(other, operation)    
-#         elif isinstance(other, DataStats):
-#             out = self._overload_math_dataStats(other, operation)      
-#         else:
-#             try:
-#                 out = self._overload_math_numpy(other, operation)
-#                 return out
-#             except:
-#                 return NotImplemented
-#         return out
-    
-#     # OVERLOAD OF MATH OPERATIONS
-#     def __mul__(self, other):
-#         return self._overload_math(other, '__mul__')
-    
-#     def __rmul__(self, other):
-#         return self._overload_math(other, '__rmul__')
-            
-#     def __truediv__(self, other):
-#         return self._overload_math(other, '__truediv__')
-    
-#     def __rtruediv__(self, other):
-#         return self._overload_math(other, '__rtruediv__')
-    
-#     def __add__(self, other):
-#         return self._overload_math(other, '__add__')
-
-#     def __radd__(self, other):
-#         return self._overload_math(other, '__radd__')
-
-#     def __sub__(self, other):
-#         return self._overload_math(other, '__sub__')
-
-#     def __rsub__(self, other):
-#         return self._overload_math(other, '__rsub__')
-
-#     def __pow__(self, other):
-#         return self._overload_math(other, '__pow__')
-
-#     def __neg__(self):
-#         return -1*self
-    
-#     def __pos__(self):
-#         return +1*self
-    
-#     def __getitem__(self, key):
-#         key_cov = key
-#         if isinstance(key, int):
-#             key_cov = slice(key, key+1, None)
-#         out = DataErr(
-#             self.mean[key], cov=self.cov[key_cov,key_cov],
-#             num_bins=self.num_resampled_bins, seed=self.seed
-#         )
-#         return out
-
 ################################################################################
 # UTILITIES
 ################################################################################
@@ -1119,39 +813,6 @@ def dataStats_func(func):
 # NEW DECORATORS TMP
 ################################################################################
 
-# def _has_dataStats(args):
-#     # check if there are DataStats object in args
-#     out = False
-#     for arg in args:
-#         if isinstance(arg, DataStats):
-#             out = True
-#             break
-#     return out 
-
-# def _get_statsType(args):
-#     for arg in args:
-#         if isinstance(arg, DataStats):
-#             out = arg.statsType
-#             break
-#     return out                
-
-
-# def _collect_data_args(args):
-#     args_data = []
-#     for arg in args:
-#         if isinstance(arg, DataStats):
-#             arg = arg._data_vectorized
-#         args_data.append(arg)
-#     args_data = tuple(args_data)
-#     return args_data
-
-# def _collect_mean_kwargs(kwargs):
-#         dict_mean = {}
-#         for key, value in kwargs.items():
-#             if isinstance(value, DataStats):
-#                 value = value.mean
-#             dict_mean[key] = value        
-#         return dict_mean
 
 def _has_dataStats(*args, **kwargs):
     # check if there are DataStats object in args
