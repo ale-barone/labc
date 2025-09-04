@@ -57,8 +57,8 @@ class StatsJack(StatsBase):
                 f"Make sure this is intentional.",
                 UserWarning, stacklevel=2
             )
-        num_bins = math.ceil(num_config / rebin) if num_config is not None else None
-        super().__init__(num_config, num_bins)
+        self.num_bins = math.ceil(num_config / rebin) if num_config is not None else None
+        super().__init__(num_config, self.num_bins)
         self._prefactor_func = StatsJack._prefactor_func
         self.rebin = rebin
         self.ID = 'Jack'
