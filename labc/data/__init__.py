@@ -675,29 +675,39 @@ def merge(*data_in):
         out = DataErr(mean, err_or_cov=cov)
     return out
 
-def zeros(T, statsType):
-    num_bins = statsType.num_bins
+def _parse_bins_arg(num_bins_or_statstype):
+    if isinstance(num_bins_or_statstype, int):
+        return num_bins_or_statstype, None
+    statsType = num_bins_or_statstype
+    return statsType.num_bins, statsType
+
+
+def zeros(T, num_bins_or_statstype):
+    num_bins, statsType = _parse_bins_arg(num_bins_or_statstype)
     mean = np.zeros(T)
     bins = np.zeros(shape=(num_bins, T))
-    out = DataStats(mean, bins, statsType)
-    return out
+    if statsType is None:
+        return DataBins(mean, bins)
+    return DataStats(mean, bins, statsType)
 
-def ones(T, statsType):
-    num_bins = statsType.num_bins
+def ones(T, num_bins_or_statstype):
+    num_bins, statsType = _parse_bins_arg(num_bins_or_statstype)
     mean = np.ones(T)
     bins = np.ones(shape=(num_bins, T))
-    out = DataStats(mean, bins, statsType)
-    return out
+    if statsType is None:
+        return DataBins(mean, bins)
+    return DataStats(mean, bins, statsType)
 
-def empty(T, statsType):
-    num_bins = statsType.num_bins
+def empty(T, num_bins_or_statstype):
+    num_bins, statsType = _parse_bins_arg(num_bins_or_statstype)
     mean = np.empty(T)
     bins = np.empty(shape=(num_bins, T))
-    out = DataStats(mean, bins, statsType)
-    return out
+    if statsType is None:
+        return DataBins(mean, bins)
+    return DataStats(mean, bins, statsType)
 
-def constant(const, statsType):
-    return const * ones(1, statsType)
+def constant(const, num_bins_or_statstype):
+    return const * ones(1, num_bins_or_statstype)
 
 def random(T, statsType):
     num_bins = statsType.num_bins
