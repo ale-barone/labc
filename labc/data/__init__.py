@@ -709,27 +709,38 @@ def empty(T, num_bins_or_statstype):
 def constant(const, num_bins_or_statstype):
     return const * ones(1, num_bins_or_statstype)
 
-def random(T, statsType):
+def gaussian(T, statsType, mu=0.0, sigma=1.0):
+    """Generate a DataStats with mean=mu, err=sigma, for any statsType.
+    """
     num_bins = statsType.num_bins
-    mean = np.random.normal(0, 1, T)
-    bins = np.random.normal(0, 1, size=(num_bins, T))
-    out = DataStats(mean, bins, statsType)
-    return out
+    prefactor = statsType._prefactor_func(num_bins)
+    bin_sigma = sigma / np.sqrt(prefactor)
+    bins = np.random.normal(mu, bin_sigma, size=(num_bins, T))
+    # correct finite-sample bias in the mean
+    mean = np.full(T, mu)
+    bins += mean - np.mean(bins, axis=0)
+    return DataStats(mean, bins, statsType)
 
-def uniform(T, statsType, low=0.0, high=1.0):   
+def uniform(T, statsType, low=0.0, high=1.0):
+    """Generate a DataStats with uniform distribution Uniform(low,high)
+    where mean=(low-high)/2, err=(low+high)/sqrt(12).
+    """
     num_bins = statsType.num_bins
-    bins = np.random.uniform(low=low, high=high, size=(num_bins, T))
-    mean = np.mean(bins, 0)
-    out = DataStats(mean, bins, statsType)
-    return out
+    prefactor = statsType._prefactor_func(num_bins)
+    bins = np.random.uniform(low, high, size=(num_bins, T))/np.sqrt(prefactor)
+    mean = (low + high) / 2.0
+    bias = mean - np.mean(bins, axis=0)
+    bins += bias
+    return DataStats(mean, bins, statsType)
 
-def Z2(T, statsType):   
+def Z2(T, statsType):
+    """Generate a DataStats with Z2 distribution."""
     num_bins = statsType.num_bins
-    bins = np.random.randint(low=-1, high=1, size=(num_bins, T))
-    bins = np.where(bins<0, bins, +1)
-    mean = np.mean(bins, 0)
-    out = DataStats(mean, bins, statsType)
-    return out
+    prefactor = statsType._prefactor_func(num_bins)
+    bin_sigma = 1.0 / np.sqrt(prefactor) if prefactor > 0 else 1.0
+    bins = np.random.choice([-bin_sigma, bin_sigma], size=(num_bins, T))
+    mean = np.zeros(T)
+    return DataStats(mean, bins, statsType)
 
 ################################################################################
 # DECORATORS
