@@ -242,6 +242,15 @@ class DataStats(DataBins):
 
         self.statsType = statsType
 
+    def _overload_math_class(self, other, operation):
+        if isinstance(other, DataErr):
+            other_as_ds = other._to_datastats(self)
+            return getattr(self, operation)(other_as_ds)
+        if isinstance(other, DataBins):
+            out_data = getattr(self._data_vectorized, operation)(other._data_vectorized)
+            return self._make_class(out_data[0], out_data[1:])
+        return NotImplemented
+
     # ERROR
     @property
     def err(self):
@@ -403,11 +412,8 @@ class DataStats(DataBins):
             dict_mean[key] = value        
         return dict_mean
     
-    ############################################################################
-    # HOOK ON NUMPY FUNCTIONS (REDEFINE NUMPY BEHAVIOUR)
-    ############################################################################
-
-
+    #-----HOOK ON NUMPY FUNCTIONS (REDEFINE NUMPY BEHAVIOUR)--------------------
+    
     def __array_ufunc__(self, ufunc, method, *args, **kwargs):
         # print('ufunc', ufunc)
         # print('method', method)
@@ -518,10 +524,10 @@ class DataErr(DataBins):
         # ex. when summing dataerr[0]+dataerr[1]+...!!
         # it would resample the slices independently and forget about the correlations!!
         # for now always convert it to_DataStats
-        np.random.seed(self.seed)
+        rng = np.random.default_rng(self.seed)
 
         if statsType is None:
-            raw_bins = np.random.multivariate_normal(
+            raw_bins = rng.multivariate_normal(
                 self.mean, self.cov, num_bins
             )
             bias = np.mean(raw_bins, 0)-self.mean
@@ -529,13 +535,13 @@ class DataErr(DataBins):
         else:
             if num_bins is None and statsType.num_bins is not None:
                 num_bins = statsType.num_bins
-            # else:
-            #     assert(num_bins==statsType.num_bins)
-            raw_bins = np.random.multivariate_normal(
+            raw_bins = rng.multivariate_normal(
                 self.mean, num_bins*self.cov, num_bins
             )
             bias = np.mean(raw_bins, 0)-self.mean
             raw_bins = raw_bins-bias
+            # FIXME: add also correction for bias on the error estimate, 
+            # which fluctuates by ~1/sqrt(2*num_bins) around self.err
             bins = statsType.generate_bins(raw_bins)
 
         return bins
@@ -595,11 +601,26 @@ class DataErr(DataBins):
             out += _print_dataStats(self.mean[0], self.err[0], prec) + "]" 
         return out
     
+    # FIXME: merge these two methods into one
+    def _to_datastats(self, other):
+        statsType = other.statsType
+        # prefactor and num_bins inferred from the target DataStats bins array
+        prefactor = statsType._get_prefactor(other.bins)
+        num_bins = other.num_bins()
+        rng = np.random.default_rng(self.seed)
+        # sample from N(mean, cov), then scale so Var(bins) = cov/prefactor
+        bins = rng.multivariate_normal(
+            self.mean, self.cov / prefactor, num_bins
+        )
+        # bias in central value
+        bias = self.mean - np.mean(bins, 0)
+        bins += bias
+        # FIXME: let _resample or bins do this
+        return DataStats(self.mean, bins, statsType)
 
     def to_dataStats(self, num_bins, statsType):
         bins = self.bins(num_bins, statsType)
-        out = DataStats(self.mean, bins, statsType)
-        return out
+        return DataStats(self.mean, bins, statsType)
     
     
     def _make_class(self, mean, bins):
@@ -631,9 +652,8 @@ class DataErr(DataBins):
             
             out = self._make_class(out_data[0], out_data[1:])
         elif isinstance(other, DataStats):
-            self_data = self._data_vectorized_with(other.num_bins(), other.statsType)
-            out_data = getattr(self_data, operation)(other._data_vectorized)
-            out = DataStats(out_data[0], out_data[1:], other.statsType)
+            self_as_ds = self._to_datastats(other)
+            out = getattr(self_as_ds, operation)(other)
         return out
     
     def __getitem__(self, key):
@@ -737,7 +757,7 @@ def Z2(T, statsType):
     """Generate a DataStats with Z2 distribution."""
     num_bins = statsType.num_bins
     prefactor = statsType._prefactor_func(num_bins)
-    bin_sigma = 1.0 / np.sqrt(prefactor) if prefactor > 0 else 1.0
+    bin_sigma = 1.0 / np.sqrt(prefactor)
     bins = np.random.choice([-bin_sigma, bin_sigma], size=(num_bins, T))
     mean = np.zeros(T)
     return DataStats(mean, bins, statsType)
