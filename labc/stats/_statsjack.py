@@ -33,6 +33,17 @@ class StatsJack(StatsBase):
         If ``rebin == _MAX_REBIN``, since this is unusual and may indicate
         significant autocorrelations in the data.
 
+    Attributes
+    ----------
+    num_config : int
+        Number of raw gauge configurations.
+    num_bins : int
+        Number of jackknife bins, ``ceil(num_config / rebin)``.
+    rebin : int
+        Rebinning factor applied before the leave-one-out procedure.
+    ID : str
+        Always ``'Jack'``.
+
     Notes
     -----
     The prefactor used in error and covariance estimation is

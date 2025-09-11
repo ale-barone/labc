@@ -56,6 +56,17 @@ class StatsBase(Istats):
     seed : int or None, optional
         Random seed for resampling methods that require it.
         Ignored in the bins-only workflow.
+
+    Attributes
+    ----------
+    num_config : int or None
+        Number of raw gauge configurations.
+    num_bins : int or None
+        Number of resampled bins.
+    seed : int or None
+        Random seed used for stochastic resampling.
+    ID : str or None
+        String identifier for the resampling strategy (``'Jack'`` or ``'Boot'``).
     """
 
     def __init__(self, num_config: int | None = None,

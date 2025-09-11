@@ -16,6 +16,17 @@ class StatsBoot(StatsBase):
     seed : int, optional
         Seed for the random number generator. Default is ``0``.
 
+    Attributes
+    ----------
+    num_config : int
+        Number of raw gauge configurations.
+    num_bins : int
+        Number of bootstrap samples.
+    seed : int
+        Random seed for reproducible resampling.
+    ID : str
+        Always ``'Boot'``.
+
     Notes
     -----
     The prefactor used in error and covariance estimation is :math:`f = 1`.

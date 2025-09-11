@@ -44,6 +44,17 @@ class StatsType(StatsBase):
     ------
     ValueError
         If ``statsID`` is not in :attr:`_KNOWN_IDS`.
+
+    Attributes
+    ----------
+    ID : str
+        Resampling strategy identifier (``'Jack'`` or ``'Boot'``).
+    num_config : None
+        Always ``None`` in the bins-only workflow.
+    num_bins : None
+        Always ``None`` in the bins-only workflow.
+    seed : None
+        Always ``None`` in the bins-only workflow.
     """
 
     _KNOWN_IDS = set(_REGISTRY)
