@@ -1,3 +1,11 @@
+"""Data containers for statistical analysis in lattice QCD.
+
+Provides :class:`DataBins`, :class:`DataStats`, and :class:`DataErr` —
+containers that store mean values alongside resampled bins and propagate
+errors transparently through arithmetic operations.  Standard NumPy
+functions work directly on these objects via the ``__array_ufunc__`` and
+``__array_function__`` hooks.
+"""
 from __future__ import annotations
 
 import numpy as np

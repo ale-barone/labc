@@ -1,11 +1,13 @@
 Data
 ====
 
-Data are handled by object of the submodules **data**. Once a ``StatsType`` object is initialized,
+.. automodule:: labc.data
+   :no-members:
+
+The submodules **data** provides the interface to handle data. Once a ``StatsType`` object is initialized,
 we can store the resampled bins in a ``DataStats`` objects and perform all the mathematical operation
-directly among them. The class also hooks numpy arrays: standard numpy functions can be
-directly used on ``DataStats`` objects, keeping in mind that they act on the
-axis=1 of an internal 2D numpy array
+directly among them. For the hooked numpy functionalities, keep 
+in mind that they act on the axis=1 of an internal 2D numpy array
 with shape=(1+num_bins, T),
 where 'num_bins' is the number of bins,
 '1' accounts for the mean value
