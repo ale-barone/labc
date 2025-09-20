@@ -6,14 +6,31 @@
 Welcome to LatticeABC's documentation!
 ======================================
 
+This is a simple library designed for lattice data analyis.
+The code is still a work in progress and constantly updating, and the
+documentation is under construction. It however contains the basic key features
+of the library, and it will be updated as the code evolves.
+For this reason, the suggested way to get started is to clone the repository 
+and start playing with the code, using the documentation as a reference. 
+To get started
 
-.. include:: ../../README.rst
+.. code-block:: bash
+
+   git clone https://github.com/ale-barone/labc.git
+
+and use the folder 'labc/labc' as a normal python module.
+
+You can, however, also install it in the usual way with pip:
+
+.. code-block:: bash
+
+   pip install -e .
 
 .. toctree::
    :maxdepth: 2
-   :caption: Contents:
 
-
+   stats
+   data
 
 Indices and tables
 ==================
