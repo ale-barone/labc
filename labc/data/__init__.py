@@ -698,6 +698,7 @@ class DataErr(DataBins):
         """
         rng = np.random.default_rng(self.seed)
 
+        # FIXME this num_samples/statsType arg is not ok
         if statsType is None:
             raw_bins = rng.multivariate_normal(
                 self.mean, self.cov, num_bins

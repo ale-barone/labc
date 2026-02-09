@@ -91,7 +91,6 @@ class Analysis:
     
     def add_global(self, key, value):
         self.globals[key] = value
-        
 
     # def copy(self):
     #     new = type(self)(self.statsType, self.tsrc_list, self.config_list)

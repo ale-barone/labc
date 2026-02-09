@@ -153,8 +153,8 @@ def init_axes(nrows=1, ncols=1, figsize=FIGSIZE, *args, **kwargs):
         ax = np.array([_MyAxes(ax[c]) for c in range(ncols)])
     else:
         ax = np.array([
-            [_MyAxes(ax[r, c]) for r in range(nrows)]
-            for c in range(ncols)
+            [_MyAxes(ax[r, c]) for c in range(ncols)]
+            for r in range(nrows)
         ])
     # FIXME: fix tight layout
     fig.tight_layout(pad=5.0)

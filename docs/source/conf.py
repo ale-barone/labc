@@ -14,6 +14,19 @@ import os
 import sys
 sys.path.insert(0, os.path.abspath('../..'))
 
+#-- MOCK to solve numpy import issue------------------------------------------
+# see https://blog.rtwilson.com/how-to-make-your-sphinx-documentation-compile-with-readthedocs-when-youre-using-numpy-and-scipy/
+
+import mock
+
+MOCK_MODULES = [
+    'numpy', 'h5py', 'pandas',
+    'scipy', 'scipy.linalg', 'scipy.optimize', 
+    'matplotlib', 'matplotlib.pyplot'
+]
+for mod_name in MOCK_MODULES:
+    sys.modules[mod_name] = mock.Mock()
+
 
 # -- Project information -----------------------------------------------------
 
