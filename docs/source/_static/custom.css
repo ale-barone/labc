@@ -1,0 +1,4 @@
+/* Apply justified text to all prose paragraphs site-wide */
+.rst-content p {
+    text-align: justify;
+}

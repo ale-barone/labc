@@ -197,6 +197,28 @@ def directzfit(param, var, *, tcut, nmax):
     out = b0 + ts*np.sum(a[i]*z**i for i in range(nmax+1))
     return out
 
+def directzfitExc(param, var, *, tcut, nmax):
+    #tcut = (3*0.1348)**2
+    q2 = var.T[0]
+    ts = var.T[1]
+    z = (np.sqrt(tcut+q2)-np.sqrt(tcut)) / (np.sqrt(tcut+q2)+np.sqrt(tcut))
+
+    q2_unique = np.unique(q2)
+    num_q2 = len(q2_unique)
+    ts_unique = np.unique(ts)
+    num_ts = len(ts_unique)
+
+    a = np.array([param[i] for i in range(nmax+1)])
+    b0 = np.array([param[i] for i in range(nmax+1, (nmax+1)+num_q2)])
+    b0 = np.array([b0 for i in range(num_ts)]).T.flatten()
+    deltaE = np.array([param[i] for i in range((nmax+1)+num_q2, (nmax+1)+2*num_q2)])
+    deltaE = np.array([deltaE for i in range(num_ts)]).T.flatten()
+    AdeltaE = np.array([param[i] for i in range((nmax+1)+2*num_q2, (nmax+1)+3*num_q2)])
+    AdeltaE = np.array([AdeltaE for i in range(num_ts)]).T.flatten()
+
+    out = b0 + ts*np.sum(a[i]*z**i for i in range(nmax+1)) + AdeltaE*np.exp(-deltaE*ts)
+    return out
+
 class FFdirectZfit:
     STRING = ''
     PARAM = {0: 'a', 1: 'b0'}
@@ -205,6 +227,13 @@ class FFdirectZfit:
     def __new__(cls):
         return directzfit
 
+class FFdirectZfitExc:
+    STRING = ''
+    PARAM = {0: 'a', 1: 'b0', 2: 'deltaE', 3: 'AdeltaE'}
+    ARGS = {}
+
+    def __new__(cls):
+        return directzfitExc
 
 def directzfitb0(param, var, *, tcut, nmax_a, nmax_b):
     #tcut = (3*0.1348)**2

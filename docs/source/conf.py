@@ -46,11 +46,56 @@ release = '0.1'
 extensions = [
     'sphinx.ext.duration',
     'sphinx.ext.doctest',
-    'sphinx.ext.napoleon',
     'sphinx.ext.autodoc',
     'sphinx.ext.autosummary',
+    'sphinx.ext.intersphinx',
+    #'sphinx.ext.napoleon',
+    'numpydoc',
 ]
+
 autosummary_generate = True
+
+
+numpydoc_xref_param_type = True
+# numpydoc_xref_ignore = {
+#     "optional",
+#     "default",
+#     "type",
+#     "array_like",
+#     "int",
+#     "str",
+#     "float",
+#     "bool",
+#     "list",
+#     "dict",
+#     "tuple",
+#     "set",
+#     #"python:int",
+#     "python:float",
+#     "python:str",
+#     "python:bool",
+#     "python:list",
+#     "python:dict",
+#     "python:tuple",
+#     "python:set",
+# }
+
+# -- Intersphinx -------------------------------------------------------------
+intersphinx_mapping = {
+    'python': ('https://docs.python.org/3', None),
+    'numpy': ('https://numpy.org/doc/stable', None),
+}
+
+# -- numpydoc ----------------------------------------------------------------
+numpydoc_show_class_members = True
+numpydoc_class_members_toctree = False
+numpydoc_attributes_as_param_list = True
+
+# -- Autodoc -----------------------------------------------------------------
+#autodoc_typehints = 'description'  # show type hints in description, not signature
+#autodoc_typehints_description_target = 'documented'
+
+autodoc_member_order = 'bysource'   # document members in source order
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ['_templates']
@@ -72,3 +117,4 @@ html_theme = 'sphinx_rtd_theme'
 # relative to this directory. They are copied after the builtin static files,
 # so a file named "default.css" will overwrite the builtin "default.css".
 html_static_path = ['_static']
+html_css_files = ['custom.css']

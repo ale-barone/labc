@@ -1,8 +1,22 @@
+"""Data containers for statistical analysis in lattice QCD.
+
+Provides :class:`DataBins`, :class:`DataStats`, and :class:`DataErr` —
+containers that store mean values alongside resampled bins and propagate
+errors transparently through arithmetic operations.  Standard NumPy
+functions work directly on these objects via the ``__array_ufunc__`` and
+``__array_function__`` hooks.
+"""
+from __future__ import annotations
+
 import numpy as np
-from math import floor, log10 
+from math import floor, log10
+from typing import TYPE_CHECKING
 from .container import Writer as _Writer
 from .utilities import _get_extension
 from scipy.linalg import block_diag
+
+if TYPE_CHECKING:
+    from ..stats._statsbase import StatsBase
 
 
 # print methods
@@ -23,8 +37,9 @@ def _print_dataStats(mean, err, prec):
     out = f"({mean_str} +- {err_str} ){power_str}"
     return out
 
-# notation like 3.244(12)
-def _print_dataStats_bis(mean, err, num_digits=2):
+
+# notation like 3.244(12)e-01 or 
+def _print_dataStats_bis(mean, err, num_digits=2, scientific=False):
     """Print mean and error in the form (mean(err))e+xx"""   
     power_err = floor(log10(np.abs(err))) if not err==0 else 0 
     power_mean = floor(log10(np.abs(mean))) if not mean==0 else 0
@@ -32,7 +47,58 @@ def _print_dataStats_bis(mean, err, num_digits=2):
     
     power_str = f"{10**power_mean:.0e}".replace('1e', 'e')
 
-    if -5<power_rel<0:
+    # notation like 0.3244(12)
+    if scientific==False:
+      if -5<power_rel<=0:
+        # mean value < 1 
+        if power_mean<0:
+          num_zero_after_comma = np.abs(power_mean) - 1
+          num_significant_digits = num_digits + np.abs(power_rel)      
+          mean_prec = num_significant_digits + num_zero_after_comma 
+          mean_str = f"{mean:.{mean_prec}f}"
+
+          err_prec = -power_err + (num_digits-1) 
+          err_digits = round(err * 10**(err_prec))
+          err_str = f"{err_digits}"
+        
+        # mean value >= 1
+        elif power_mean>=0:
+          num_digits_before_comma = np.abs(power_mean) + 1
+          num_significant_digits = num_digits + np.abs(power_rel)       
+          mean_prec = num_significant_digits - num_digits_before_comma
+          mean_str = f"{mean:.{mean_prec}f}"
+
+          if power_err>=0:
+            err_prec = -power_err + (num_digits-1) 
+            err_str = f"{err:.{err_prec}f}"
+          else:
+            err_prec = -power_err + (num_digits-1) 
+            err_digits = round(err * 10**(err_prec))
+            err_str = f"{err_digits}"
+
+        out = f"{mean_str}({err_str})"
+
+      elif power_rel > 0:
+        # error >= mean: show both mean and error to the same decimal places,
+        # determined by rounding mean to (num_digits-1) significant figures.
+        # The matching decimal in the error avoids ambiguity, e.g.
+        # 0.3(121.0) is unambiguous, while 0.3(121) could be read as +-0.121
+        d = max(0, num_digits - 2 - power_mean)
+        mean_str = f"{mean:.{d}f}"
+        err_str  = f"{err:.{d}f}"
+        out = f"{mean_str}({err_str})"
+      else:
+        # power_rel <= -5: very small error, use standard compact notation
+        # with as many decimal places as needed to correctly place the error digit
+        err_prec = -power_err + (num_digits - 1)
+        err_digits = round(err * 10**err_prec)
+        mean_str = f"{mean:.{err_prec}f}"
+        err_str = f"{err_digits}"
+        out = f"{mean_str}({err_str})"
+    
+    # notation like 3.244(12)e-01
+    if scientific==True:
+      if -5<power_rel<0:
         mean_num_digits = power_mean-power_err + (num_digits-1)
         mean_str = f"{mean/10**power_mean:.{mean_num_digits}f}"
 
@@ -40,7 +106,8 @@ def _print_dataStats_bis(mean, err, num_digits=2):
         err_digits = round(err * 10**(err_prec))
         err_str = f"{err_digits}"
         out = f"{mean_str}({err_str}){power_str}"
-    elif power_rel==0:
+        
+      elif power_rel==0:
         mean_num_digits = power_mean-power_err + (num_digits-1)
         mean_str = f"{mean/10**power_mean:.{mean_num_digits}f}"
 
@@ -48,20 +115,45 @@ def _print_dataStats_bis(mean, err, num_digits=2):
         err_digits = err*10**(err_prec)
         err_str = f"{err_digits:.{num_digits-1}f}"
         out = f"{mean_str}({err_str}){power_str}"
-    else:        
+      else:        
         mean_str = f"{mean/10**power_mean:.{num_digits-1}f}"
         err_str = f"{err * 10**(-power_mean):.{num_digits-1}e}"
-        out = f"({mean_str} +- {err_str}){power_str}"
+        out = f"({mean_str} +- {err_str}){power_str}"    
+
     return out
+
 
 ################################################################################
 # DataBins
 ################################################################################
 
-class DataBins:    
-    """Basic class for manipulation of binned data."""
+class DataBins:
+    """Container for binned data supporting arithmetic error propagation.
+    
+    Essentially a thin wrapper around a ``(1+num_bins, T)`` array: 
+    the first row stores the mean and the remaining rows store the resampled bins.
+    It defines arithmetic operations (``+``, ``-``, ``*``, ``/``) that act
+    element-wise on both the mean and all bins simultaneously.
 
-    def __init__(self, mean, bins, *args, **kwargs):
+    Parameters
+    ----------
+    mean : np.ndarray or float
+        Central value(s).  A scalar is promoted to a 1-element array.
+    bins : np.ndarray
+        Resampled bins, shape ``(num_bins, T)``.
+    *args, **kwargs
+        Forwarded to :meth:`_make_class` when constructing derived objects.
+
+    Attributes
+    ----------
+    mean : np.ndarray
+        Central value(s), shape ``(T,)``.
+    bins : np.ndarray
+        Resampled bins, shape ``(num_bins, T)``.
+    """
+
+    def __init__(self, mean: np.ndarray | float, bins: np.ndarray,
+                 *args, **kwargs) -> None:
         # make sure we always deal with numpy array
         if not isinstance(mean, (np.ndarray, list)):
             mean = np.array([mean])
@@ -72,11 +164,13 @@ class DataBins:
         self._data_vectorized = np.concatenate((np.array([mean]), bins), axis=0)
         self.mean = self._data_vectorized[0]
         self.bins = self._data_vectorized[1:]
-    
-    def num_bins(self):
+
+    def num_bins(self) -> int:
+        """Return the number of resampled bins."""
         return len(self.bins)
 
-    def __len__(self):
+    def __len__(self) -> int:
+        """Return the number of observables ``T``."""
         return len(self.mean)
     
     ############################################################################
@@ -166,23 +260,50 @@ class DataBins:
                 return False  
 
     # HOOK NUMPY
-    # FIXME: I don't particularly like this trick, it's a bit fishy...
-    def __array__(self):
-        class ObjWrapper:
-            def __init__(self, data):
-                self.data = data
-        out = ObjWrapper(self)
-        return np.asarray(out)  
+    def __array__(self, dtype=None):  # dtype required by numpy API, always ignored
+        out = np.empty((), dtype=object)
+        out[()] = self
+        return out
 
 
 ################################################################################
 # DataStats
 ################################################################################
 
-class DataStats(DataBins):    
-    """Basic class for data manipulation."""
+class DataStats(DataBins):
+    """Binned data with an associated statistical resampling strategy.
 
-    def __init__(self, mean, bins, statsType):
+    Extends :class:`DataBins` with error, covariance, and correlation
+    estimates computed via the attached :class:`~labc.stats.StatsBase`
+    resampling object.  All three quantities are cached on first access.
+
+    Parameters
+    ----------
+    mean : np.ndarray or float
+        Central value(s), shape ``(T,)`` or scalar.
+    bins : np.ndarray
+        Jackknife or bootstrap bins, shape ``(num_bins, T)``.
+    statsType : StatsBase
+        Resampling strategy used to compute errors and covariances.
+
+    Attributes
+    ----------
+    mean : np.ndarray
+        Central value(s), shape ``(T,)``.
+    bins : np.ndarray
+        Resampled bins, shape ``(num_bins, T)``.
+    statsType : StatsBase
+        Resampling strategy attached to this dataset.
+    err : np.ndarray
+        Statistical error, shape ``(T,)``.  Computed and cached on first access.
+    cov : np.ndarray
+        Covariance matrix, shape ``(T, T)``.  Computed and cached on first access.
+    corr : np.ndarray
+        Correlation matrix, shape ``(T, T)``.  Computed and cached on first access.
+    """
+
+    def __init__(self, mean: np.ndarray | float, bins: np.ndarray,
+                 statsType: StatsBase) -> None:
         super().__init__(mean, bins, statsType)
         self._err = None
         self._cov = None
@@ -190,35 +311,71 @@ class DataStats(DataBins):
 
         self.statsType = statsType
 
+    def _overload_math_class(self, other, operation):
+        if isinstance(other, DataErr):
+            other_as_ds = other._to_datastats(self)
+            return getattr(self, operation)(other_as_ds)
+        if isinstance(other, DataBins):
+            out_data = getattr(self._data_vectorized, operation)(other._data_vectorized)
+            return self._make_class(out_data[0], out_data[1:])
+        return NotImplemented
+
     # ERROR
     @property
-    def err(self):
+    def err(self) -> np.ndarray:
+        """Statistical error, shape ``(T,)``.
+
+        Computed by :meth:`~labc.stats.StatsBase.err_func` of the attached
+        ``statsType`` and cached after the first call.
+        """
         if self._err is None:
             self._err = self.statsType.err_func(self.mean, self.bins)
         return self._err
-    
-    def rel_err(self):
+
+    def rel_err(self) -> np.ndarray:
+        """Absolute relative error ``|err / mean|``, shape ``(T,)``."""
         return np.abs(self.err/self.mean)
 
-    def rel_diff(self, other):
+    def rel_diff(self, other: DataStats) -> DataStats:
+        """Element-wise relative difference ``(self - other) / self``.
+
+        Parameters
+        ----------
+        other : DataStats
+            Dataset to compare against.  Must have the same ``T`` and
+            compatible ``num_bins``.
+
+        Returns
+        -------
+        DataStats
+            Relative difference as a new :class:`DataStats`.
+        """
         assert(isinstance(other, DataStats))
-        out_mean = np.abs((self.mean - other.mean) / self.mean)
-        out_bins = np.abs((self.bins - other.bins) / self.bins)
+        out_mean = (self.mean - other.mean) / self.mean
+        out_bins = (self.bins - other.bins) / self.bins
         out = self._make_class(out_mean, out_bins)
-        return out 
-    
+        return out
+
     # COVARIANCE MATRIX
     @property
-    def cov(self):
-        """Compute the covariance matrix."""
+    def cov(self) -> np.ndarray:
+        """Covariance matrix, shape ``(T, T)``.
+
+        Computed by :meth:`~labc.stats.StatsBase.cov` of the attached
+        ``statsType`` and cached after the first call.
+        """
         if self._cov is None:
             self._cov = self.statsType.cov(self)
         return self._cov
-    
+
     # CORRELATION MATRIX
     @property
-    def corr(self):
-        """Compute the correlation matrix."""
+    def corr(self) -> np.ndarray:
+        """Correlation matrix, shape ``(T, T)``.
+
+        Computed by :meth:`~labc.stats.StatsBase.corr` of the attached
+        ``statsType`` and cached after the first call.
+        """
         if self._corr is None:
             self._corr = self.statsType.corr(self)
         return self._corr
@@ -248,18 +405,43 @@ class DataStats(DataBins):
             out += _print_dataStats(self.mean[0], self.err[0], prec) + "]" 
         return out
     
-    def print(self, num_digits=2):
-        out = [_print_dataStats_bis(self.mean[0], self.err[0], num_digits)]
+    def print(self, num_digits: int = 2, scientific: bool = False) -> list[str]:
+        """Return a list of compact ``mean(err)`` strings, one per observable.
+
+        Parameters
+        ----------
+        num_digits : int, optional
+            Number of significant digits in the error.  Default is 2.
+        scientific : bool, optional
+            If ``True``, use scientific notation.  Default is ``False``.
+
+        Returns
+        -------
+        list[str]
+            One formatted string per element of ``self``.
+        """
+        out = [_print_dataStats_bis(self.mean[0], self.err[0], num_digits, scientific)]
         if len(self)>1:
-            #out.append(_print_dataStats_bis(self.mean[0], self.err[0], prec))
             for mean, err in zip(self.mean[1:-1], self.err[1:-1]):
-                out.append(_print_dataStats_bis(mean, err, num_digits))
-            out.append(_print_dataStats_bis(self.mean[-1], self.err[-1], num_digits))
+                out.append(_print_dataStats_bis(mean, err, num_digits, scientific))
+            out.append(_print_dataStats_bis(self.mean[-1], self.err[-1], num_digits, scientific))
         return out
 
     # SAVE
     # TODO: change this into a more efficient factory
-    def save(self, file_out, group, *args, **kwargs):
+    def save(self, file_out: str, group: str, *args, **kwargs) -> None:
+        """Save mean, error, and bins to an HDF5 file.
+
+        Parameters
+        ----------
+        file_out : str
+            Path to the output file.  Only ``.h5`` is currently supported.
+        group : str
+            HDF5 group name under which the data are stored.
+        *args, **kwargs
+            Forwarded to the writer's ``add_mean`` / ``add_err`` / ``add_bins``
+            methods.
+        """
         ext = _get_extension(file_out)
         if ext=='.h5':
             writer = _Writer(file_out, 'stats')
@@ -350,11 +532,8 @@ class DataStats(DataBins):
             dict_mean[key] = value        
         return dict_mean
     
-    ############################################################################
-    # HOOK ON NUMPY FUNCTIONS (REDEFINE NUMPY BEHAVIOUR)
-    ############################################################################
-
-
+    #-----HOOK ON NUMPY FUNCTIONS (REDEFINE NUMPY BEHAVIOUR)--------------------
+    
     def __array_ufunc__(self, ufunc, method, *args, **kwargs):
         # print('ufunc', ufunc)
         # print('method', method)
@@ -415,10 +594,42 @@ class DataStats(DataBins):
 
 
 class DataErr(DataBins):
-    """Class for error propagation."""
-    NUM_BINS = 5000
+    """Observable with Gaussian uncertainty defined by a mean and covariance.
 
-    def __init__(self, mean, err_or_cov, *, seed=None):
+    Stores a central value and a covariance matrix and propagates errors
+    analytically through arithmetic operations.  When combined with a
+    :class:`DataStats` object, the covariance is converted on-the-fly to
+    compatible resampled bins.
+
+    Parameters
+    ----------
+    mean : np.ndarray or float
+        Central value(s), shape ``(T,)`` or scalar.
+    err_or_cov : np.ndarray
+        Either a 1-D error array of shape ``(T,)`` (sqrt of diagonal covariance)
+        or a full 2-D covariance matrix of shape ``(T, T)``.
+    seed : int or None, optional
+        Seed for the random number generator used when sampling bins.
+        Fixing the seed makes bin generation reproducible.
+
+    Attributes
+    ----------
+    mean : np.ndarray
+        Central value(s), shape ``(T,)``.
+    err : np.ndarray
+        Diagonal errors ``sqrt(diag(cov))``, shape ``(T,)``.
+    cov : np.ndarray
+        Covariance matrix, shape ``(T, T)``.
+    corr : np.ndarray
+        Correlation matrix, shape ``(T, T)``.
+    seed : int or None
+        Random seed for bin generation.
+    """
+
+    NUM_BINS: int = 5000
+
+    def __init__(self, mean: np.ndarray | float,
+                 err_or_cov: np.ndarray, *, seed: int | None = None) -> None:
         if not isinstance(mean, (np.ndarray, list)):
             mean = np.array([mean])
         
@@ -439,51 +650,92 @@ class DataErr(DataBins):
 
         self.mean = mean
         self._num_bins = self.NUM_BINS
-        self._statsType = None
 
 
     @property
-    def num_bins(self):
+    def num_bins(self) -> int:
+        """Default number of bins used when sampling without a target DataStats."""
         return self._num_bins
-    
-    @num_bins.setter
-    def num_bins(self, value):
-        self._num_bins = value 
-        
 
-    def _resample(self, num_samples=None, statsType=None):
-        # FIXME! BUG!! It does not account for correlation if I slice a DataErr,
-        # ex. when summing dataerr[0]+dataerr[1]+...!!
-        # it would resample the slices independently and forget about the correlations!!
-        # for now always convert it to_DataStats
-        np.random.seed(self.seed)
+    @num_bins.setter
+    def num_bins(self, value: int) -> None:
+        self._num_bins = value
+    
+    def print(self, num_digits=2, scientific=False):
+        # fill outputstring
+        out = [_print_dataStats_bis(self.mean[0], self.err[0], num_digits, scientific)]
+        if len(self)>1:
+            #out.append(_print_dataStats_bis(self.mean[0], self.err[0], prec))
+            for mean, err in zip(self.mean[1:-1], self.err[1:-1]):
+                out.append(_print_dataStats_bis(mean, err, num_digits, scientific))
+            out.append(_print_dataStats_bis(self.mean[-1], self.err[-1], num_digits, scientific))
+        return out
+
+
+    def _resample(self, num_bins: int | None = None,
+                  statsType: StatsBase | None = None) -> np.ndarray:
+        """Sample bins from the Gaussian distribution ``N(mean, cov)``.
+
+        Parameters
+        ----------
+        num_bins : int, optional
+            Number of bins to generate.  Defaults to ``self.num_bins`` when
+            ``statsType`` is ``None``, or to ``statsType.num_bins`` otherwise.
+        statsType : StatsBase, optional
+            If provided, the raw samples are passed through
+            ``statsType.generate_bins`` to produce jackknife/bootstrap bins.
+
+        Returns
+        -------
+        np.ndarray
+            Resampled bins, shape ``(num_bins, T)``.
+
+        .. warning::
+            Slicing a :class:`DataErr` before arithmetic (e.g.
+            ``de[0] + de[1]``) samples each component independently and loses
+            off-diagonal covariance information.  Operate on the full object
+            and convert with :meth:`to_dataStats` when correlations matter.
+        """
+        rng = np.random.default_rng(self.seed)
 
         # FIXME this num_samples/statsType arg is not ok
         if statsType is None:
-            raw_bins = np.random.multivariate_normal(
-                self.mean, self.cov, num_samples
+            raw_bins = rng.multivariate_normal(
+                self.mean, self.cov, num_bins
             )
             bias = np.mean(raw_bins, 0)-self.mean
             bins = raw_bins-bias
         else:
-            if statsType.num_bins is not None:
-                try:
-                  num_samples = statsType.num_config
-                except:
-                  num_samples = statsType.num_bins
-            # else:
-            #     assert(num_bins==statsType.num_bins)
-            
-            raw_bins = np.random.multivariate_normal(
-                self.mean, num_samples*self.cov, num_samples
+            if num_bins is None and statsType.num_bins is not None:
+                num_bins = statsType.num_bins
+            raw_bins = rng.multivariate_normal(
+                self.mean, num_bins*self.cov, num_bins
             )
             bias = np.mean(raw_bins, 0)-self.mean
             raw_bins = raw_bins-bias
+            # FIXME: add also correction for bias on the error estimate, 
+            # which fluctuates by ~1/sqrt(2*num_bins) around self.err
             bins = statsType.generate_bins(raw_bins)
 
         return bins
 
-    def bins(self, num_bins=None, statsType=None):
+    def bins(self, num_bins: int | None = None,
+             statsType: StatsBase | None = None) -> np.ndarray:
+        """Return sampled bins, shape ``(num_bins, T)``.
+
+        Parameters
+        ----------
+        num_bins : int, optional
+            Number of bins.  Defaults to ``self.num_bins``.
+        statsType : StatsBase, optional
+            If provided, bins are structured as jackknife/bootstrap samples
+            via ``statsType.generate_bins``.
+
+        Returns
+        -------
+        np.ndarray
+            Resampled bins, shape ``(num_bins, T)``.
+        """
         if statsType is None:
             if num_bins==None:
                 num_bins = self.num_bins
@@ -493,11 +745,12 @@ class DataErr(DataBins):
 
     @property
     def _data_vectorized(self):
-        bins = self.bins(self._num_bins, self._statsType)
-        out = np.concatenate(
-            (np.array([self.mean]), bins), axis=0
-        )
-        return out
+        bins = self.bins(self._num_bins)
+        return np.concatenate((np.array([self.mean]), bins), axis=0)
+
+    def _data_vectorized_with(self, num_bins, statsType):
+        bins = self.bins(num_bins, statsType)
+        return np.concatenate((np.array([self.mean]), bins), axis=0)
 
     # def err_func(self):
     #     bins = self.bins
@@ -505,7 +758,7 @@ class DataErr(DataBins):
     #     return err 
 
     # FIXME build it inside stastType classes
-    def cov_func(self, bins, statsType=None):
+    def _cov_func(self, bins, statsType=None):
         if statsType is None:
             N = bins.shape[1]
             cov = np.cov(bins, rowvar=False)
@@ -537,15 +790,62 @@ class DataErr(DataBins):
             out += _print_dataStats(self.mean[0], self.err[0], prec) + "]" 
         return out
     
+    # FIXME: consolidate with _resample so _to_datastats simply calls it
+    def _to_datastats(self, other: DataStats) -> DataStats:
+        """Convert to a :class:`DataStats` compatible with *other*.
 
-    def to_dataStats(self, num_bins, statsType):
+        Bins are sampled from :math:`\\mathcal{N}(\\mu,\\,\\Sigma/f)` where
+        :math:`f` is the prefactor of *other*'s ``statsType``, so that
+        ``statsType.err_func`` recovers ``self.err`` up to finite-sample noise.
+
+        Parameters
+        ----------
+        other : DataStats
+            Target dataset whose ``statsType`` and bin count define the
+            output format.
+
+        Returns
+        -------
+        DataStats
+            New :class:`DataStats` with the same mean and (approximate)
+            errors as this object.
+        """
+        statsType = other.statsType
+        # prefactor and num_bins inferred from the target DataStats bins array
+        prefactor = statsType._get_prefactor(other.bins)
+        num_bins = other.num_bins()
+        rng = np.random.default_rng(self.seed)
+        # sample from N(mean, cov/prefactor) so err_func returns self.err
+        bins = rng.multivariate_normal(
+            self.mean, self.cov / prefactor, num_bins
+        )
+        # correct finite-sample bias in the mean
+        bins += self.mean - np.mean(bins, 0)
+        return DataStats(self.mean, bins, statsType)
+
+    def to_dataStats(self, num_bins: int, statsType: StatsBase) -> DataStats:
+        """Convert to a :class:`DataStats` with *num_bins* bins. If *statsType*
+        is provided with *num_bins!=None*, it must have *num_bins=statsType.num_bins*. 
+
+        Parameters
+        ----------
+        num_bins : int
+            Number of bins to generate.
+        statsType : StatsBase
+            Resampling strategy for the output :class:`DataStats`.
+
+        Returns
+        -------
+        DataStats
+            New :class:`DataStats` with mean and binned representation of
+            this object's Gaussian uncertainty.
+        """
         bins = self.bins(num_bins, statsType)
-        out = DataStats(self.mean, bins, statsType)
-        return out
+        return DataStats(self.mean, bins, statsType)
     
     
     def _make_class(self, mean, bins):
-        cov = self.cov_func(bins)
+        cov = self._cov_func(bins)
         out = self.__class__(mean, cov, *self._args, **self._kwargs)
         out.num_bins = len(bins)
         return out
@@ -573,13 +873,8 @@ class DataErr(DataBins):
             
             out = self._make_class(out_data[0], out_data[1:])
         elif isinstance(other, DataStats):
-            self._statsType = other.statsType
-            self.num_bins = other.num_bins()
-            out_data = getattr(
-                self._data_vectorized, operation
-            )(other._data_vectorized)
-            self._statsType = None
-            out = DataStats(out_data[0], out_data[1:], other.statsType)
+            self_as_ds = self._to_datastats(other)
+            out = getattr(self_as_ds, operation)(other)
         return out
     
     def __getitem__(self, key):
@@ -591,211 +886,6 @@ class DataErr(DataBins):
         )
         return out
 
-
-
-################################################################################
-# DataErr
-################################################################################
-
-
-# class DataErr:
-#     """Class for error propagation."""
-
-#     def __init__(self, mean, err=None, *, cov=None, num_bins=2000, seed=None):
-#         if not isinstance(mean, (np.ndarray, list)):
-#             mean = np.array([mean])
-
-#         if cov is None:
-#             if not isinstance(err, np.ndarray):
-#                 err = np.array([err])
-#             self.cov = np.diag(err**2)
-#         elif cov is not None:
-#             #assert(np.allclose(err**2, np.diag(cov), atol=1e-15))
-#             assert(err is None), "'err' must be 'None' if cov is specified"
-#             assert(cov.ndim==2), f"'cov' has to be a 2D array, " \
-#                                   f" here ndim={cov.ndim}" \
-#                                   f" with shape={cov.shape}"
-#             self.cov = cov
-#             err = np.sqrt(np.diag(cov))
-
-#         self.seed = seed
-#         self.num_resampled_bins = num_bins
-
-#         self.mean = np.asarray(mean)
-#         self._bins = None
-#         self.err = np.asarray(err)
-        
-    
-#     def num_bins(self):
-#         return self.num_resampled_bins
-
-#     def resample(self, num_bins):
-#         if num_bins is None:
-#             num_bins = self.num_bins()
-#         np.random.seed(self.seed)
-#         raw_bins = np.random.multivariate_normal(
-#             self.mean, self.cov, num_bins
-#         )
-#         bias = np.mean(raw_bins, 0)-self.mean
-#         bins = raw_bins-bias
-#         return bins
-    
-#     @property
-#     def bins(self):
-#         if self._bins is None:
-#             self._bins = self.resample(self.num_bins())
-#         return self._bins
-    
-#     def err_func(self):
-#         bins = self.bins
-#         err = np.sqrt(np.var(bins, axis=0))
-#         return err 
-
-#     def cov_func(self):
-#         cov = np.cov(self.bins, rowvar=False)
-#         return cov
-    
-
-#     # def make_class_from_bins(self, mean, bins):
-#     #     dataStats = DataBins(mean, bins)
-#     #     err = 
-
-
-
-#     def __len__(self):
-#         return (len(self.mean))
-
-#     def __repr__(self):
-#         prec = 4 # precision
-#         space = len('DataErr[')*" "
-#         out = f"DataErr["
-#         if len(self)>1:
-#             out += f"{self.mean[0]: .{prec}e} +- {self.err[0]:.{prec}e},\n" + space
-#             for mean, err in zip(self.mean[1:-1], self.err[1:-1]):
-#                 out += f"{mean: .{prec}e} +- {err:.{prec}e},\n" + space
-#         out += f"{self.mean[-1]: .{prec}e} +- {self.err[-1]:.{prec}e}]"      
-#         return out
-
-#     def __str__(self):
-#         prec = 5 # precision
-#         space = len('DataErr[')*" "
-#         out = f"DataErr["
-#         if len(self)>1:
-#             out += _print_dataStats(self.mean[0], self.err[0], prec) + ",\n"
-#             for mean, err in zip(self.mean[1:-1], self.err[1:-1]):
-#                 out += space + _print_dataStats(mean, err, prec) + ",\n"
-#             out += space + _print_dataStats(self.mean[-1], self.err[-1], prec) + "]"
-#         else:
-#             out += _print_dataStats(self.mean[0], self.err[0], prec) + "]" 
-#         return out
-    
-
-#     def to_dataStats(self, num_bins, statsType):
-#         bins = self.resample_statsType(num_bins, statsType)
-#         out = DataStats(self.mean, bins, statsType)
-#         return out
-    
-#     def resample_statsType(self, num_bins, statsType):
-#         np.random.seed(self.seed)
-#         raw_bins = np.random.multivariate_normal(self.mean, num_bins*self.cov, num_bins)
-#         bias = np.mean(raw_bins, 0)-self.mean
-#         raw_bins = raw_bins-bias
-#         bins = statsType.generate_bins(raw_bins)
-#         return bins
-
-    
-#     # generic overload for mathematical operations among 2 DataStats objects
-#     def _overload_math_dataStats(self, other, operation):
-#         statsType = other.statsType
-#         num_bins = other.num_bins()
-
-#         bins = self.resample_statsType(num_bins, statsType)
-
-#         data = DataStats(self.mean, bins, statsType)
-#         out_data = getattr(other, operation)(data)
-#         return out_data
-    
-#     def _overload_math_dataErr(self, other, operation):
-#         num_bins = max(self.num_bins(), other.num_bins())
-#         bins = self.resample(num_bins)
-#         bins_other = other.resample(num_bins)
-
-#         out_mean = getattr(self.mean, operation)(other.mean)
-#         out_bins = getattr(bins, operation)(bins_other)
-#         out_err = self.err_func()
-#         out = DataErr(out_mean, err=out_err, num_bins=num_bins)
-#         return out
-    
-#     # generic overload for mathematical operations (following numpy)
-#     def _overload_math_numpy(self, other, operation):
-#         out_mean = getattr(self.mean, operation)(other)
-#         bins = self.resample()
-#         out_bins = getattr(bins, operation)(other)
-#         #out_err = getattr(self.err, operation)(other)
-#         out_err = np.sqrt(np.var(out_bins, axis=0))
-#         #out_cov = getattr(self.cov, operation)(other)
-#         # recompute covariance with np.cov?
-#         out = DataErr(out_mean, err=out_err)
-#         return out
-    
-#     # # math overload
-
-#     def _overload_math(self, other, operation):
-#         if isinstance(other, DataErr):
-#             out = self._overload_math_dataErr(other, operation)    
-#         elif isinstance(other, DataStats):
-#             out = self._overload_math_dataStats(other, operation)      
-#         else:
-#             try:
-#                 out = self._overload_math_numpy(other, operation)
-#                 return out
-#             except:
-#                 return NotImplemented
-#         return out
-    
-#     # OVERLOAD OF MATH OPERATIONS
-#     def __mul__(self, other):
-#         return self._overload_math(other, '__mul__')
-    
-#     def __rmul__(self, other):
-#         return self._overload_math(other, '__rmul__')
-            
-#     def __truediv__(self, other):
-#         return self._overload_math(other, '__truediv__')
-    
-#     def __rtruediv__(self, other):
-#         return self._overload_math(other, '__rtruediv__')
-    
-#     def __add__(self, other):
-#         return self._overload_math(other, '__add__')
-
-#     def __radd__(self, other):
-#         return self._overload_math(other, '__radd__')
-
-#     def __sub__(self, other):
-#         return self._overload_math(other, '__sub__')
-
-#     def __rsub__(self, other):
-#         return self._overload_math(other, '__rsub__')
-
-#     def __pow__(self, other):
-#         return self._overload_math(other, '__pow__')
-
-#     def __neg__(self):
-#         return -1*self
-    
-#     def __pos__(self):
-#         return +1*self
-    
-#     def __getitem__(self, key):
-#         key_cov = key
-#         if isinstance(key, int):
-#             key_cov = slice(key, key+1, None)
-#         out = DataErr(
-#             self.mean[key], cov=self.cov[key_cov,key_cov],
-#             num_bins=self.num_resampled_bins, seed=self.seed
-#         )
-#         return out
 
 ################################################################################
 # UTILITIES
@@ -810,12 +900,30 @@ class DataErr(DataBins):
 #     out = DataStats(data_vectorized[0], data_vectorized[1:], statsType)
 #     return out
 
-def merge(*data_in):
+def merge(*data_in: DataStats | DataErr) -> DataStats | DataErr:
+    """Concatenate multiple objects along the observable axis.
+
+    All inputs must be of the same type (:class:`DataStats` or
+    :class:`DataErr`).  For :class:`DataStats` the ``statsType`` is taken
+    from the first element; for :class:`DataErr` the covariance is assembled
+    as a block-diagonal matrix (no cross-correlations between inputs).
+
+    Parameters
+    ----------
+    *data_in : DataStats or DataErr
+        Objects to concatenate.  May also be passed as a single list or
+        ``np.ndarray`` of objects.
+
+    Returns
+    -------
+    DataStats or DataErr
+        Concatenated object of the same type as the inputs.
+    """
     if isinstance(data_in[0], list):
         data_in = tuple(data_in[0])
     elif isinstance(data_in[0], np.ndarray):
         data_in = tuple(list(data_in[0]))
-    
+
     if isinstance(data_in[0], DataStats):
         statsType = data_in[0].statsType
         data_vectorized = np.concatenate([data._data_vectorized for data in data_in], axis=1)
@@ -826,59 +934,190 @@ def merge(*data_in):
         out = DataErr(mean, err_or_cov=cov)
     return out
 
-def zeros(T, statsType):
-    num_bins = statsType.num_bins
+
+def _parse_bins_arg(num_bins_or_statstype: int | StatsBase,
+                    ) -> tuple[int | None, StatsBase | None]:
+    """Parse a ``num_bins_or_statstype`` argument into ``(num_bins, statsType)``."""
+    if isinstance(num_bins_or_statstype, int):
+        return num_bins_or_statstype, None
+    statsType = num_bins_or_statstype
+    return statsType.num_bins, statsType
+
+
+def zeros(T: int, num_bins_or_statstype: int | StatsBase) -> DataBins | DataStats:
+    """Return a :class:`DataBins` or :class:`DataStats` filled with zeros.
+
+    Parameters
+    ----------
+    T : int
+        Number of observables.
+    num_bins_or_statstype : int or StatsBase
+        Number of bins (returns :class:`DataBins`) or a ``StatsBase`` object
+        (returns :class:`DataStats`).
+    """
+    num_bins, statsType = _parse_bins_arg(num_bins_or_statstype)
     mean = np.zeros(T)
     bins = np.zeros(shape=(num_bins, T))
-    out = DataStats(mean, bins, statsType)
-    return out
+    if statsType is None:
+        return DataBins(mean, bins)
+    return DataStats(mean, bins, statsType)
 
-def ones(T, statsType):
-    num_bins = statsType.num_bins
+
+def ones(T: int, num_bins_or_statstype: int | StatsBase) -> DataBins | DataStats:
+    """Return a :class:`DataBins` or :class:`DataStats` filled with ones.
+
+    Parameters
+    ----------
+    T : int
+        Number of observables.
+    num_bins_or_statstype : int or StatsBase
+        Number of bins (returns :class:`DataBins`) or a ``StatsBase`` object
+        (returns :class:`DataStats`).
+    """
+    num_bins, statsType = _parse_bins_arg(num_bins_or_statstype)
     mean = np.ones(T)
     bins = np.ones(shape=(num_bins, T))
-    out = DataStats(mean, bins, statsType)
-    return out
+    if statsType is None:
+        return DataBins(mean, bins)
+    return DataStats(mean, bins, statsType)
 
-def empty(T, statsType):
-    num_bins = statsType.num_bins
+
+def empty(T: int, num_bins_or_statstype: int | StatsBase) -> DataBins | DataStats:
+    """Return a :class:`DataBins` or :class:`DataStats` with uninitialized values.
+
+    Parameters
+    ----------
+    T : int
+        Number of observables.
+    num_bins_or_statstype : int or StatsBase
+        Number of bins (returns :class:`DataBins`) or a ``StatsBase`` object
+        (returns :class:`DataStats`).
+    """
+    num_bins, statsType = _parse_bins_arg(num_bins_or_statstype)
     mean = np.empty(T)
     bins = np.empty(shape=(num_bins, T))
-    out = DataStats(mean, bins, statsType)
-    return out
+    if statsType is None:
+        return DataBins(mean, bins)
+    return DataStats(mean, bins, statsType)
 
-def constant(const, statsType):
-    return const * ones(1, statsType)
 
-def random(T, statsType):
+def constant(const: float,
+             num_bins_or_statstype: int | StatsBase) -> DataBins | DataStats:
+    """Return a length-1 object with all values equal to *const*.
+
+    Parameters
+    ----------
+    const : float
+        Constant value for both mean and bins.
+    num_bins_or_statstype : int or StatsBase
+        Passed to :func:`ones`.
+    """
+    return const * ones(1, num_bins_or_statstype)
+
+def gaussian(T: int, statsType: StatsBase,
+             mu: float = 0.0, sigma: float = 1.0) -> DataStats:
+    """Generate a :class:`DataStats` with Gaussian bins, mean=*mu*, err=*sigma*.
+
+    Bins are drawn from :math:`\\mathcal{N}(\\mu,\\,(\\sigma/\\sqrt{f})^2)` where
+    :math:`f` is the ``statsType`` prefactor, so that ``err_func`` returns
+    *sigma* regardless of the resampling strategy.
+
+    Parameters
+    ----------
+    T : int
+        Number of observables.
+    statsType : StatsBase
+        Resampling strategy (jackknife or bootstrap).
+    mu : float, optional
+        Mean value.  Default is ``0.0``.
+    sigma : float, optional
+        Target error.  Default is ``1.0``.
+
+    Returns
+    -------
+    DataStats
+        Dataset with ``mean = mu`` and ``err = sigma``.
+    """
     num_bins = statsType.num_bins
-    mean = np.random.normal(0, 1, T)
-    bins = np.random.normal(0, 1, size=(num_bins, T))
-    out = DataStats(mean, bins, statsType)
-    return out
+    prefactor = statsType._prefactor_func(num_bins)
+    bin_sigma = sigma / np.sqrt(prefactor)
+    bins = np.random.normal(mu, bin_sigma, size=(num_bins, T))
+    # correct finite-sample bias in the mean
+    mean = np.full(T, mu)
+    bins += mean - np.mean(bins, axis=0)
+    return DataStats(mean, bins, statsType)
 
-def uniform(T, statsType, low=0.0, high=1.0):   
-    num_bins = statsType.num_bins
-    bins = np.random.uniform(low=low, high=high, size=(num_bins, T))
-    mean = np.mean(bins, 0)
-    out = DataStats(mean, bins, statsType)
-    return out
 
-def Z2(T, statsType):   
+def uniform(T: int, statsType: StatsBase,
+            low: float = 0.0, high: float = 1.0) -> DataStats:
+    """Generate a :class:`DataStats` with uniform bins and err=(high-low)/sqrt(12).
+
+    Bins are drawn from :math:`\\mathrm{Uniform}(\\mathrm{low},\\mathrm{high})`
+    and then divided by :math:`\\sqrt{f}` (the ``statsType`` prefactor) so that
+    ``err_func`` returns ``(high-low)/sqrt(12)`` for any resampling strategy.
+
+    Parameters
+    ----------
+    T : int
+        Number of observables.
+    statsType : StatsBase
+        Resampling strategy (jackknife or bootstrap).
+    low : float, optional
+        Lower bound of the uniform distribution.  Default is ``0.0``.
+    high : float, optional
+        Upper bound of the uniform distribution.  Default is ``1.0``.
+
+    Returns
+    -------
+    DataStats
+        Dataset with ``mean = (low+high)/2`` and ``err ≈ (high-low)/sqrt(12)``.
+    """
     num_bins = statsType.num_bins
-    bins = np.random.randint(low=-1, high=1, size=(num_bins, T))
-    bins = np.where(bins<0, bins, +1)
-    mean = np.mean(bins, 0)
-    out = DataStats(mean, bins, statsType)
-    return out
+    prefactor = statsType._prefactor_func(num_bins)
+    bins = np.random.uniform(low, high, size=(num_bins, T))/np.sqrt(prefactor)
+    mean = (low + high) / 2.0
+    bias = mean - np.mean(bins, axis=0)
+    bins += bias
+    return DataStats(mean, bins, statsType)
+
+
+def Z2(T: int, statsType: StatsBase) -> DataStats:
+    """Generate a :class:`DataStats` with :math:`\\mathbb{Z}_2` bins, mean=0, err≈1.
+
+    Each bin entry is drawn from ``{-1/sqrt(f), +1/sqrt(f)}`` with equal
+    probability, where :math:`f` is the ``statsType`` prefactor.
+
+    Parameters
+    ----------
+    T : int
+        Number of observables.
+    statsType : StatsBase
+        Resampling strategy (jackknife or bootstrap).
+
+    Returns
+    -------
+    DataStats
+        Dataset with ``mean = 0`` and ``err ≈ 1``.
+    """
+    num_bins = statsType.num_bins
+    prefactor = statsType._prefactor_func(num_bins)
+    bin_sigma = 1.0 / np.sqrt(prefactor)
+    bins = np.random.choice([-bin_sigma, bin_sigma], size=(num_bins, T))
+    mean = np.zeros(T)
+    return DataStats(mean, bins, statsType)
 
 ################################################################################
 # DECORATORS
 ################################################################################
 
 def dataStats_args(func):
-    """Decorator to extend a generic function 'func' to allow DataStats
-    arguments."""
+    """Decorator that lifts a scalar function to accept :class:`DataStats` arguments.
+
+    The decorated function is called once on the means and once per bin,
+    then the results are assembled into a new :class:`DataStats`.  Use
+    :func:`dataStats_vectorized_args` when the function can broadcast over
+    the stacked ``(1+num_bins, T)`` array for better performance.
+    """
 
     def wrapper(*args, **kwargs):
         is_data_stats = DataStats._has_dataStats(args)
@@ -904,8 +1143,13 @@ def dataStats_args(func):
 
 
 def dataStats_vectorized_args(func):
-    """Decorator to extend a generic function 'func' to allow DataStats
-    arguments with vectorization."""
+    """Decorator that lifts a vectorized function to accept :class:`DataStats` arguments.
+
+    The decorated function is called once on the stacked
+    ``(1+num_bins, T)`` data array (mean in row 0, bins in rows 1…).
+    This is faster than :func:`dataStats_args` when the underlying function
+    supports broadcasting over the extra leading axis.
+    """
 
     def wrapper(*args, **kwargs):
         is_data_stats = DataStats._has_dataStats(args)
@@ -964,39 +1208,6 @@ def dataStats_func(func):
 # NEW DECORATORS TMP
 ################################################################################
 
-# def _has_dataStats(args):
-#     # check if there are DataStats object in args
-#     out = False
-#     for arg in args:
-#         if isinstance(arg, DataStats):
-#             out = True
-#             break
-#     return out 
-
-# def _get_statsType(args):
-#     for arg in args:
-#         if isinstance(arg, DataStats):
-#             out = arg.statsType
-#             break
-#     return out                
-
-
-# def _collect_data_args(args):
-#     args_data = []
-#     for arg in args:
-#         if isinstance(arg, DataStats):
-#             arg = arg._data_vectorized
-#         args_data.append(arg)
-#     args_data = tuple(args_data)
-#     return args_data
-
-# def _collect_mean_kwargs(kwargs):
-#         dict_mean = {}
-#         for key, value in kwargs.items():
-#             if isinstance(value, DataStats):
-#                 value = value.mean
-#             dict_mean[key] = value        
-#         return dict_mean
 
 def _has_dataStats(*args, **kwargs):
     # check if there are DataStats object in args

@@ -1,21 +1,41 @@
 Stats
------
+=====
 
-A ``StatsType`` object can be created through the the **stats** submodule.
-It can initialize either a bootstrap or a jackknife resampling.
+.. automodule:: labc.stats
 
-.. code-block:: python
+StatsBase
+---------
 
-   from labc import stats
+.. class:: labc.stats.StatsBase
 
-   statjack = stats.StatsType.Jack(num_config=num_config)
-   # OR
-   statsboot = stats.StatsType.Boot(num_config=num_config, num_bins=num_bins, seed=0)
+``StatsBase`` is the shared abstract base for all resampling objects.
+:class:`StatsType`, :class:`StatsJack`, and :class:`StatsBoot` all inherit
+from it. In normal usage you never instantiate ``StatsBase`` directly —
+use :meth:`StatsType.Jack` or :meth:`StatsType.Boot` instead.
+
+StatsType
+---------
+
+.. autoclass:: labc.stats.StatsType
+   :show-inheritance:
+   :members:
+
+Jackknife
+---------
+
+.. autoclass:: labc.stats.StatsJack
+   :show-inheritance:
+   :members:
+   :inherited-members:
 
 
-They both inherit from the same private class ``StatsBase`` and share the same methods.
-They differ essential for the way the data are resampled (i.e. how the bins are created).
+Bootstrap
+---------
 
-.. autoclass:: labc.stats._statsbase.StatsBase
-  :members:
+.. autoclass:: labc.stats.StatsBoot
+   :show-inheritance:
+   :members:
+   :inherited-members:
+
+
 

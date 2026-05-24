@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "LatticeABC"
+version = "0.1"
+authors = [
+    { name = "Alessandro Barone" }
+]
+requires-python = ">=3.11"
+dependencies = [
+    "numpy==1.26.4",
+    "scipy==1.16.0",
+    "matplotlib==3.10.7",
+    "h5py==3.9.0",
+    "joblib==1.5.3",
+    "scikit-learn==1.8.0",
+    "pandas==2.3.3",
+]
+
+[project.optional-dependencies]
+test = [
+    "pytest==7.4.0",
+]
+docs = [
+    "sphinx==9.0.4",
+    "sphinx-rtd-theme==3.1.0",
+    "numpydoc",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

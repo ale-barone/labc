@@ -11,7 +11,7 @@ from matplotlib.pyplot import *
 # ==============================================================================
 
 FIGSIZE = (10, 7)
-FONTSIZE = {'S' : 22, 'M': 24, 'B': 26, 'BB': 28}
+FONTSIZE = {'S' : 26, 'M': 28, 'B': 30, 'BB': 32}
 LABELS = {'x' : 't', 'y' : 'y', 'title' : 'Title'}
 
 MARKERSIZE = 8

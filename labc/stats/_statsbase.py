@@ -1,158 +1,264 @@
-import numpy as np 
+import numpy as np
 from abc import ABC, abstractmethod
+from typing import TYPE_CHECKING
 from .. import data as dM
 from scipy.linalg import block_diag
+
+# DataStats is imported only during type checking (e.g. mypy, Pyright) and not
+# at runtime. This avoids a circular import: labc.data imports labc.stats, so
+# importing labc.data here at runtime would create a cycle. The string
+# annotations ('DataStats') in the signatures below are resolved lazily and
+# never evaluated at runtime, so the guard is safe.
+if TYPE_CHECKING:
+    from ..data import DataStats
 
 
 class Istats(ABC):
     """Base class for managing statistics."""
 
     @abstractmethod
-    def generate_bins(self, array_raw_in):
+    def generate_bins(self, array_raw):
         """It generates resampled bins from raw data."""
 
     @abstractmethod
-    def err_func(self, array_bins_in):
+    def err_func(self, array_bins):
         """It computes the error from resampled bins."""
 
     @abstractmethod
-    def generate_stats(self, array_raw_in):
+    def generate_stats(self, array_raw):
         """It computes the 'stats' version returning (array_mean, array_err, array_bins)."""
 
     @abstractmethod
-    def cov(self, *arrays_in):
+    def cov(self, *arrays):
         """General covariance matrix possibly for different input arrays."""
 
     @abstractmethod
-    def corr(self, *arrays_in):
+    def corr(self, *arrays):
         """General correlation matrix possibly for different input arrays."""
 
 
 class StatsBase(Istats):
-    
-    def __init__(self, num_config=None, num_bins=None, seed=None):
+    """Base class for statistical analysis.
+
+    Provides shared infrastructure for error estimation, covariance and
+    correlation computation, and the full ``generate_stats`` workflow.
+    Concrete subclasses implement the resampling strategy
+    via :meth:`generate_bins`.
+
+    Parameters
+    ----------
+    num_config : int or None, optional
+        Number of raw gauge configurations. May be ``None`` when working
+        with pre-computed bins only (bins-only workflow via ``StatsType('Jack')``
+        or ``StatsType('Boot')``).
+    num_bins : int or None, optional
+        Number of resampled bins. ``None`` in the bins-only workflow.
+    seed : int or None, optional
+        Random seed for resampling methods that require it.
+        Ignored in the bins-only workflow.
+
+    Attributes
+    ----------
+    num_config : int or None
+        Number of raw gauge configurations.
+    num_bins : int or None
+        Number of resampled bins.
+    seed : int or None
+        Random seed used for stochastic resampling.
+    ID : str or None
+        String identifier for the resampling strategy (``'Jack'`` or ``'Boot'``).
+    """
+
+    def __init__(self, num_config: int | None = None,
+                 num_bins: int | None = None,
+                 seed: int | None = None):
         self.num_config = num_config
         self.num_bins = num_bins
         self.seed = seed
-        self.prefactor = None
+        self._prefactor_func = None
         self.ID = None
-    
+
     def __str__(self):
         out = (
-            f"StatsType = '{self.ID}':" 
+            f"StatsType = '{self.ID}':"
             f"\n -num_config = {self.num_config}"
             f"\n -num_bins = {self.num_bins}"
             f"\n -seed = {self.seed}"
         )
         return out
-    
+
     def __repr__(self):
         out = (
-            f"StatsType.{self.ID}(" 
+            f"StatsType.{self.ID}("
             f"num_config={self.num_config}, "
             f"num_bins={self.num_bins}, "
             f"seed={self.seed})"
         )
         return out
 
-    def generate_bins(self, array_raw_in):
-        pass
+    def generate_bins(self, _array_raw: np.ndarray) -> np.ndarray:
+        raise NotImplementedError
 
-    def _get_num_bins(self, array_bins_in: np.ndarray):
-        assert(array_bins_in.ndim==2)
-        num_bins = len(array_bins_in)
-        return num_bins
+    def _get_num_bins(self, array_bins: np.ndarray) -> int:
+        assert(array_bins.ndim == 2)
+        return len(array_bins)
 
-    def _get_prefactor(self, array_bins_in: np.ndarray):
-        if self.prefactor!=None:
-            prefactor = self.prefactor
-        else:
-            num_bins = self._get_num_bins(array_bins_in)
-            if self.ID=='Jack':
-                prefactor = num_bins-1
-            elif self.ID=='Boot':
-                prefactor=1
-        return prefactor
+    def _get_prefactor(self, array_bins: np.ndarray) -> float:
+        return self._prefactor_func(self._get_num_bins(array_bins))
 
-    def _assert_bins_size(self, array_in):
-        if self.num_bins!=None:
-            assert(self.num_bins==len(array_in)),\
-            "size of array is different from the number of bins"\
-            " 'num_bins' of the object StatsType"
+    def _assert_bins_size(self, array: np.ndarray):
+        if self.num_bins is not None:
+            if self.num_bins != len(array):
+                raise ValueError(
+                    f"array length {len(array)} does not match "
+                    f"num_bins={self.num_bins} of this StatsType object"
+                )
 
-    def err_func(self, array_mean_in, array_bins_in):
-        # error 
-        diff2 = (array_bins_in - array_mean_in)**2
+    def err_func(self, array_mean: np.ndarray, array_bins: np.ndarray) -> np.ndarray:
+        """Compute the statistical error from resampled bins.
+
+        Parameters
+        ----------
+        array_mean : np.ndarray
+            Sample mean, shape ``(T,)``.
+        array_bins : np.ndarray
+            Resampled bins, shape ``(num_bins, T)``.
+
+        Returns
+        -------
+        np.ndarray
+            Statistical errors, shape ``(T,)``.
+
+        Notes
+        -----
+        The error is computed as:
+
+        .. math::
+
+            \\sigma_i = \\sqrt{f \\cdot \\frac{1}{N_\\mathrm{bins}}
+                        \\sum_b \\left(b_i - \\bar{x}_i\\right)^2}
+
+        where :math:`f` is the prefactor defined by the concrete subclass.
+        """
+        diff2 = (array_bins - array_mean)**2
         self._assert_bins_size(diff2)
         prefactor = self._get_prefactor(diff2)
         err2 = prefactor * np.mean(diff2, 0)
-        err = np.sqrt(err2)
-        return err
+        return np.sqrt(err2)
 
-    def generate_stats(self, array_raw_in):
-        mean = np.mean(array_raw_in, 0)
-        bins = self.generate_bins(array_raw_in)
-        err = self.err_func(mean, bins)  
+    def generate_stats(self, array_raw: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """Compute mean, error, and resampled bins from raw configurations.
+
+        Parameters
+        ----------
+        array_raw : np.ndarray
+            Raw configurations, shape ``(num_config, T)``.
+
+        Returns
+        -------
+        mean : np.ndarray
+            Sample mean, shape ``(T,)``.
+        err : np.ndarray
+            Statistical error, shape ``(T,)``.
+        bins : np.ndarray
+            Resampled bins, shape ``(num_bins, T)``.
+        """
+        mean = np.mean(array_raw, 0)
+        bins = self.generate_bins(array_raw)
+        err = self.err_func(mean, bins)
         return mean, err, bins
 
-    def cov2(self, data_x_in, data_y_in, *, num_bins=None, rangefit=None, thin=1):
-        """Compute the covariance matrix of two dataStats objects."""
-        
-        T = len(data_x_in)
-        num_bins = data_x_in.num_bins() if num_bins is None else num_bins
-        xmin, xmax = (0, T) if rangefit is None else (rangefit[0], rangefit[1])
-        
-        data_x_cut_mean = data_x_in.mean[xmin:xmax:thin]
-        data_y_cut_mean = data_y_in.mean[xmin:xmax:thin]
-        num_points = len(data_x_cut_mean)
-        
-        cov = np.empty(shape=(num_bins, num_points, num_points))
+    def cov(self, data_x: 'DataStats', data_y: 'DataStats | None' = None) -> np.ndarray:
+        """Compute the covariance matrix of one or two ``DataStats`` objects.
+
+        Parameters
+        ----------
+        data_x : DataStats
+            First dataset.
+        data_y : DataStats, optional
+            Second dataset. If ``None``, the auto-covariance of ``data_x``
+            is returned.
+
+        Returns
+        -------
+        np.ndarray
+            Covariance matrix, shape ``(len(data_x), len(data_y))``.
+
+        Notes
+        -----
+        Slicing for fit ranges or thinning should be applied to the inputs
+        before calling this method.
+        """
+        if data_y is None:
+            data_y = data_x
+        num_bins = data_x.num_bins()
+        cov = np.empty(shape=(num_bins, len(data_x), len(data_y)))
         for b in range(num_bins):
-            bins_x_cut_aux = data_x_in.bins[b][xmin:xmax:thin]
-            bins_y_cut_aux = data_y_in.bins[b][xmin:xmax:thin]
-            
-            # Covariance (already applying cuts)
-            vec_x = bins_x_cut_aux - data_x_cut_mean
-            vec_y = bins_y_cut_aux - data_y_cut_mean
+            vec_x = data_x.bins[b] - data_x.mean
+            vec_y = data_y.bins[b] - data_y.mean
             cov[b] = np.outer(vec_x, vec_y)
-  
-        prefactor = self._get_prefactor(data_x_in.bins)
-        cov = prefactor * np.mean(cov, 0)
-        return cov
+        prefactor = self._get_prefactor(data_x.bins)
+        return prefactor * np.mean(cov, 0)
 
-    def cov(self, data_x_in, *, num_bins=None, rangefit=None, thin=1):
-        return self.cov2(data_x_in, data_x_in, num_bins=num_bins, rangefit=rangefit, thin=thin)
+    def cov_blocks(self, *data: 'DataStats') -> np.ndarray:
+        """Covariance matrix of multiple ``DataStats`` objects merged into one.
 
-    def cov_blocks(self, *data_in, num_bins=None, rangefit=None, thin=1):
-        """General covariance matrix possibly for different input arrays."""
-        data_in_merged = dM.merge(*data_in)
-        return self.cov(data_in_merged, num_bins=num_bins, rangefit=rangefit, thin=thin)
+        All datasets are concatenated along the observable axis before the
+        covariance is computed, preserving cross-correlations between them.
 
-    def cov_blocks_diag(self, *data_in, num_bins=None, rangefit=None, thin=1):
-        """Block diagonal covariance matrix"""
-        cov_list = []
-        for data in data_in:
-            cov_list.append(self.cov(data))
-        return block_diag(*cov_list)
+        Parameters
+        ----------
+        *data : DataStats
+            Datasets to merge.
 
-
-    def corr2(self, data_x_in, data_y_in, *, num_bins=None, rangefit=None, thin=1):
-        """Compute the correlation matrix of two dataStats objects."""
-        cov = self.cov2(data_x_in, data_y_in, 
-            num_bins=num_bins, rangefit=rangefit, thin=thin
-        )
-        xmin, xmax = (0, len(data_x_in)) if rangefit is None else (rangefit[0], rangefit[1])
-        err_x = data_x_in.err[xmin:xmax:thin]
-        err_y = data_y_in.err[xmin:xmax:thin]
-        corr = np.diag(1/err_x)@cov@np.diag(1/err_y)
-        return corr
-
-    def corr(self, data_x_in, *, num_bins=None, rangefit=None, thin=1):
+        Returns
+        -------
+        np.ndarray
+            Full covariance matrix of the concatenated dataset.
         """
-        Compute the correlation matrix of the time slices of 
-        one dataStats objects.
+        return self.cov(dM.merge(*data))
+
+    def cov_blocks_diag(self, *data: 'DataStats') -> np.ndarray:
+        """Block-diagonal covariance matrix of multiple ``DataStats`` objects.
+
+        Computes the covariance of each dataset independently and assembles
+        them into a block-diagonal matrix, assuming no cross-correlations.
+
+        Parameters
+        ----------
+        *data : DataStats
+            Datasets for each diagonal block.
+
+        Returns
+        -------
+        np.ndarray
+            Block-diagonal covariance matrix.
         """
-        corr = self.corr2(data_x_in, data_x_in,
-            num_bins=num_bins, rangefit=rangefit, thin=thin
-        )
-        return corr
+        return block_diag(*[self.cov(d) for d in data])
+
+    def corr(self, data_x: 'DataStats', data_y: 'DataStats | None' = None) -> np.ndarray:
+        """Compute the correlation matrix of one or two ``DataStats`` objects.
+
+        Parameters
+        ----------
+        data_x : DataStats
+            First dataset.
+        data_y : DataStats, optional
+            Second dataset. If ``None``, the auto-correlation of ``data_x``
+            is returned. Diagonal entries are exactly 1 in the auto-correlation
+            case.
+
+        Returns
+        -------
+        np.ndarray
+            Correlation matrix, shape ``(len(data_x), len(data_y))``.
+
+        Notes
+        -----
+        Slicing for fit ranges or thinning should be applied to the inputs
+        before calling this method.
+        """
+        if data_y is None:
+            data_y = data_x
+        cov = self.cov(data_x, data_y)
+        return np.diag(1/data_x.err) @ cov @ np.diag(1/data_y.err)

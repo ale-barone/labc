@@ -15,6 +15,9 @@ from  .. import plot as plt
 import h5py
 import itertools
 from sklearn.covariance import LedoitWolf
+import hashlib
+
+
 
 # =============================================================================
 # utilities for fit
@@ -48,6 +51,10 @@ def chi_sq(fit):
     chisq = sum(fit.fun**2.0)
     pv = p_value(Ndof, chisq)
     return pv, chisq / Ndof, Ndof
+
+def seed_from_string(s: str) -> int:
+    h = hashlib.sha256(s.encode("utf-8")).digest()
+    return int.from_bytes(h[:4], "big")  # 32-bit seed
 
 ################################################################################
 # simple fitter
@@ -223,6 +230,13 @@ class FitResult:
               + fit_info +'\n'\
               + (max_lenght)*'-' +'\n'
         return out
+    
+    def __getitem__(self, par):
+        try:
+          out = self.result[par]
+        except:
+          out = self.result_full[par]
+        return out
 
     def _get_result_full(self, fitted_param):
         param_dict_flatten = self._flatten_param_dict(self.param_dict)
@@ -257,11 +271,14 @@ class FitResult:
         # return out
     
     # TODO: make it more general
-    def save(self, file, group, rename_par=None):
+    def save(self, file, group=None, rename_par=None):
         if rename_par is None:
             rename_par = {p: p for p in self.param}
         with h5py.File(file, 'w') as hf:
-            G = hf.create_group(group)
+            if group is None:
+              G = hf
+            else:
+              G = hf.create_group(group)
             for p, pr in rename_par.items():
                 G.create_dataset(f'{pr}/mean', data=self.result[p].mean)
                 G.create_dataset(f'{pr}/err', data=self.result[p].err)
@@ -270,6 +287,32 @@ class FitResult:
             G.create_dataset('pval', data=self.quality['pval'])
             G.create_dataset('chisq_Ndof', data=self.quality['chisq_Ndof'])
             G.create_dataset('Ndof', data=self.quality['Ndof'])
+
+    def save2(self, file, group=None, rename_par=None, overwrite=False):
+        if rename_par is None:
+            rename_par = {p: p for p in self.param}
+        else:
+            rename_par = {p: rename_par.get(p, p) for p in self.param}
+
+        def _write(G, key, data):
+            if key in G:
+                if overwrite:
+                    del G[key]
+                else:
+                    raise ValueError(f"'{key}' already exists. Pass overwrite=True to replace it.")
+            G.create_dataset(key, data=data)
+
+        with h5py.File(file, 'a') as hf:
+            G = hf.require_group(group) if group is not None else hf
+
+            for p, pr in rename_par.items():
+                _write(G, f'{pr}/mean', self.result[p].mean)
+                _write(G, f'{pr}/err',  self.result[p].err)
+                _write(G, f'{pr}/bins', self.result[p].bins)
+
+            _write(G, 'pval',       self.quality['pval'])
+            _write(G, 'chisq_Ndof', self.quality['chisq_Ndof'])
+            _write(G, 'Ndof',       self.quality['Ndof'])
 
 
 ################################################################################
@@ -438,7 +481,8 @@ class Fitter:
             return libfunc()(param, x, *fit_func_args, **fit_func_kwargs)
         self._fit_func = func
         
-        self.prior = None
+        self.prior = {}
+        self.prior_data = {}
     
     @property
     def fit_func(self):
@@ -448,15 +492,15 @@ class Fitter:
     def fit_func(self, func):
         self._fit_func = func
 
-    def set_prior(self, param, mu, sigma, resampling=True):
+    def set_prior(self, param, mu, sigma, resampling=True, seed=None):
         # assert(param in self.param.values())
-        self.prior = {}
-        self.prior_data = {}
         self.prior_resampling = resampling
         if resampling==True:
+            if isinstance(seed, str):
+              seed = seed_from_string(seed)
             #bins = np.random.normal(mu, sigma, size=self.num_bins)
-            _prior_data = dM.DataErr(mu, sigma)
-            self.prior_data[param] = _prior_data.to_dataStats(None, self.statsType)
+            _prior_data = dM.DataErr(mu, sigma, seed=seed)
+            self.prior_data[param] = _prior_data.to_dataStats(self.num_bins, self.statsType)
         else:
             self.prior_data[param] = mu #dMconstant(mu, self.statsType)
         
@@ -697,7 +741,7 @@ class Fitter:
         fit_mean = fit.x
         fit_cov = np.linalg.inv(fit['jac'].T@fit['jac'])
 
-        fit_out = dM.DataErr(fit_mean, fit_cov)
+        fit_out = dM.DataErr(fit_mean, fit_cov, seed=seed_from_string(f'{np.mean(fit_mean):.6f}'))
         fit_out = fit_out.to_dataStats(None, self.statsType)
 
 

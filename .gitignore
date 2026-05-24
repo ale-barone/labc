@@ -1,4 +1,9 @@
 __pycache__
-test
+*.pyc
 .spyproject
 docs/build
+tmp*
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+
