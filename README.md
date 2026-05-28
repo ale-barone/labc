@@ -9,6 +9,11 @@
 A Python package for Lattice QCD data analysis, designed to be compatible
 with standard NumPy functions.
 
+The package is designed for reproducible analysis workflows in lattice field
+theory, where observables are estimated from ensembles of gauge field
+configurations, and uncertainties need to be propagated consistently through
+non-linear transformations, fits, and derived quantities.
+
 ## Features
 
 - **Statistical resampling** — jackknife and bootstrap with optional
@@ -25,11 +30,21 @@ with standard NumPy functions.
 
 ## Installation
 
+At this stage, `labc` is intended to be used directly from the source
+repository. Clone the repository with:
+
 ```bash
-git clone https://github.com/ale-barone/LatticeABC.git labc
-cd labc
+git clone https://github.com/ale-barone/labc.git
+```
+
+The package can then either be used directly from the source tree, or installed
+in editable mode with:
+
+```bash
 pip install -e .
 ```
+
+The editable installation is recommended (and encouraged) for development.
 
 ## Quick start
 
@@ -57,10 +72,24 @@ meff = -np.log(corr[1:]/corr[:-1])
 
 ## Documentation
 
-Full documentation (work in progress) with API reference is available at
+Documentation, including an API reference, is available at
 [labc.readthedocs.io](https://labc.readthedocs.io).
+
+
+## Development status
+
+`labc` is under active development and is used in lattice QCD analysis workflows.
+The package is primarily developed for research use, with an emphasis on
+transparent statistical analysis, reproducibility, and interoperability with the
+scientific Python ecosystem.
+
 
 ## Requirements
 
-Python ≥ 3.11.  All dependencies are listed in
+`labc` requires Python ≥ 3.11.
+Runtime dependencies and optional development dependencies are managed through
 [`pyproject.toml`](pyproject.toml) and installed automatically with `pip`.
+
+## License
+
+This project is distributed under the MIT licence.
